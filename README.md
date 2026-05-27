@@ -1,1 +1,146 @@
-# DontDie
+# DontDie · Training Log
+
+A personal habit tracker and workout log for a structured PPL training split. Runs entirely as a static site on GitHub Pages — no backend, no build step.
+
+---
+
+## What it is
+
+- **Today tab** — daily habit checklist with optimistic sync
+- **Week tab** — 7-day grid overview with per-day completion
+- **Stats tab** — weekly bar chart, heatmap (GitHub-style), streak counter, per-habit analytics
+- **Split tab** — full weekly schedule + detailed gym session breakdown
+- **Settings tab** — add custom habits, manage built-ins, export/clear data
+
+Data lives in Supabase (free tier is plenty). The app works offline and queues changes for retry.
+
+---
+
+## Setup (5 minutes)
+
+### 1 — Fork or clone this repo
+
+```
+git clone https://github.com/YOUR_USERNAME/DontDie
+```
+
+### 2 — Create a free Supabase project
+
+Go to [supabase.com](https://supabase.com), create a new project.
+
+### 3 — Run the SQL schema
+
+In your Supabase dashboard → **SQL Editor**, paste and run:
+
+```sql
+CREATE TABLE habit_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  date DATE NOT NULL,
+  habit_id TEXT NOT NULL,
+  completed BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(date, habit_id)
+);
+
+CREATE TABLE custom_habits (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  days INTEGER[] NOT NULL,
+  color TEXT DEFAULT '#6ee7b7',
+  active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
+```
+
+### 4 — Fill in `config.js`
+
+Open `config.js` and replace the placeholder values:
+
+| Setting | Where to find it |
+|---|---|
+| `SUPABASE_URL` | Supabase Dashboard → Settings → API → Project URL |
+| `SUPABASE_ANON_KEY` | Supabase Dashboard → Settings → API → anon public |
+
+The `PIN_HASH` is already set to the hash of `3510`.
+
+### 5 — Enable GitHub Pages
+
+In your repo: **Settings → Pages → Source → main branch → / (root)** → Save.
+
+Your app will be live at `https://YOUR_USERNAME.github.io/DontDie/`.
+
+---
+
+## Changing the PIN
+
+The PIN is never stored in plain text. Only a SHA-256 hash lives in `config.js`.
+
+To compute the hash of a new PIN, run this in your browser console:
+
+```javascript
+const pin = "YOUR_NEW_PIN";
+const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+console.log(hex); // paste this into config.js as PIN_HASH
+```
+
+Replace `PIN_HASH` in `config.js` with the output.
+
+---
+
+## Adding custom habits
+
+Open the app → **Settings tab** → fill in the name, select which days it applies, pick a color → **Add Habit**.
+
+Custom habits appear alongside the built-in schedule on the relevant days.
+
+---
+
+## Training split reference
+
+| Day | Focus |
+|---|---|
+| Monday | Push A (Chest · Back · Deltas · Calves) + OAH |
+| Tuesday | Legs A (Quads · Glutes) + OAH |
+| Wednesday | Pull A (Back · Biceps) |
+| Thursday | Push B (Chest · Triceps · Deltas · Calves) + OAH |
+| Friday | Pull B (Posterior · Biceps · Deltas) + OAH |
+| Saturday | Cardio (HIIT + Zone 2) + Skill |
+| Sunday | Active Recovery (Zone 2 + Mobility) |
+
+Mobility runs every day. OAH is skipped Wednesday (CNS rest).
+
+---
+
+## File structure
+
+```
+index.html   — app shell, PIN screen, navigation
+style.css    — all styles and animations
+app.js       — tab rendering, habit logic, UI state
+db.js        — Supabase client and all database functions
+config.js    — Supabase credentials + PIN hash (edit this)
+README.md    — this file
+```
+
+---
+
+## Offline behavior
+
+When Supabase is unreachable, a banner appears at the top. Habit toggles still work — changes are queued in memory and retried every 30 seconds automatically. Data is not persisted offline if you close the tab before it syncs.
+
+---
+
+## Security note
+
+The PIN hash in `config.js` is visible in the public repo. This is fine — SHA-256 of a 4-digit PIN cannot be reversed in practice without brute-forcing all 10,000 combinations, and the data itself (habit logs) is not sensitive. The PIN just prevents casual access.
+
+If you want stronger security, move the repo to private or use Supabase Row Level Security with a proper auth flow.
