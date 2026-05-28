@@ -511,7 +511,7 @@ function switchTab(tabName, animate = true) {
     split:    () => renderSplit(),
     settings: () => renderSettings(),
   };
-  renders[tabName]?.();
+  if (renders[tabName]) renders[tabName]();
 }
 
 // ============================================================
@@ -1628,7 +1628,8 @@ function renderSplitContent(view, todayDow) {
       });
     });
 
-    document.getElementById('volume-toggle')?.addEventListener('click', function() {
+    var volToggle = document.getElementById('volume-toggle');
+    if (volToggle) volToggle.addEventListener('click', function() {
       document.getElementById('volume-body').classList.toggle('open');
     });
 
@@ -1741,7 +1742,8 @@ function renderMobilitySplit(container, todayDow) {
     });
   });
 
-  document.getElementById('mobility-notes-toggle')?.addEventListener('click', function () {
+  var mobNotesToggle = document.getElementById('mobility-notes-toggle');
+  if (mobNotesToggle) mobNotesToggle.addEventListener('click', function() {
     document.getElementById('mobility-notes-body').classList.toggle('open');
   });
 }
@@ -2037,8 +2039,9 @@ async function initPin() {
 }
 
 function updatePinDots() {
-  for (let i = 0; i < 4; i++) {
-    document.getElementById(`dot-${i}`)?.classList.toggle('filled', i < pinBuffer.length);
+  for (var i = 0; i < 4; i++) {
+    var dot = document.getElementById('dot-' + i);
+    if (dot) dot.classList.toggle('filled', i < pinBuffer.length);
   }
 }
 
