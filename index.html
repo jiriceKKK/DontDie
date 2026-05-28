@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0d0d0f">
   <title>DontDie · Training Log</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -100,11 +104,13 @@
 
     <!-- Tab Content -->
     <main class="main-content" id="main-content">
-      <div class="tab-panel active" id="tab-today"></div>
-      <div class="tab-panel" id="tab-week"></div>
-      <div class="tab-panel" id="tab-stats"></div>
-      <div class="tab-panel" id="tab-split"></div>
-      <div class="tab-panel" id="tab-settings"></div>
+      <div id="tab-slider">
+        <div class="tab-panel" id="tab-today"    data-tab="today"></div>
+        <div class="tab-panel" id="tab-week"     data-tab="week"></div>
+        <div class="tab-panel" id="tab-stats"    data-tab="stats"></div>
+        <div class="tab-panel" id="tab-split"    data-tab="split"></div>
+        <div class="tab-panel" id="tab-settings" data-tab="settings"></div>
+      </div>
     </main>
 
     <!-- Bottom Nav (mobile <768px) -->

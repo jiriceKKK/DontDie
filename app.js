@@ -39,6 +39,7 @@ const PRESET_COLORS = [
   '#fb923c', // orange
 ];
 
+const TAB_ORDER   = ['today', 'week', 'stats', 'split', 'settings'];
 const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAY_FULL    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -49,6 +50,7 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 
 const state = {
   activeTab: 'today',
+  activeTabIndex: 0,
   statsSection: 'overview',
   splitView: 'fullweek',
   customHabits: [],
@@ -473,21 +475,35 @@ function updateProgressRing(date) {
 // TAB NAVIGATION
 // ============================================================
 
-function switchTab(tabName) {
-  state.activeTab = tabName;
+function switchTab(tabName, animate = true) {
+  const newIndex = TAB_ORDER.indexOf(tabName);
+  if (newIndex === -1) return;
 
-  // Update nav items
+  state.activeTab = tabName;
+  state.activeTabIndex = newIndex;
+
+  // Update nav active state
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabName);
   });
 
-  // Update panels
-  document.querySelectorAll('.tab-panel').forEach(panel => {
-    const isActive = panel.id === `tab-${tabName}`;
-    panel.classList.toggle('active', isActive);
-  });
+  if (window.innerWidth < 768) {
+    // Mobile: move the slider to the correct pane
+    const slider = document.getElementById('tab-slider');
+    if (slider) {
+      slider.style.transition = animate
+        ? 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+        : 'none';
+      slider.style.transform = `translateX(${-newIndex * window.innerWidth}px)`;
+    }
+  } else {
+    // Desktop: classic show/hide
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('active', panel.id === `tab-${tabName}`);
+    });
+  }
 
-  // Render the tab
+  // Render tab content
   const renders = {
     today:    () => renderToday(today()),
     week:     () => renderWeek(),
@@ -496,6 +512,90 @@ function switchTab(tabName) {
     settings: () => renderSettings(),
   };
   renders[tabName]?.();
+}
+
+// ============================================================
+// SWIPE NAVIGATION
+// ============================================================
+
+function initSwipe() {
+  const slider = document.getElementById('tab-slider');
+  if (!slider) return;
+
+  let startX = 0, startY = 0;
+  let deltaX = 0;
+  let axisLocked = null; // 'h' | 'v' | null
+  let startTime = 0;
+  let dragging = false;
+
+  slider.addEventListener('touchstart', (e) => {
+    if (window.innerWidth >= 768) return;
+    startX    = e.touches[0].clientX;
+    startY    = e.touches[0].clientY;
+    deltaX    = 0;
+    axisLocked = null;
+    dragging  = false;
+    startTime = Date.now();
+    // kill transition so drag follows finger exactly
+    slider.style.transition = 'none';
+  }, { passive: true });
+
+  slider.addEventListener('touchmove', (e) => {
+    if (window.innerWidth >= 768) return;
+
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    // lock axis on first ≥ 8px of movement
+    if (axisLocked === null) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        axisLocked = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      }
+      return; // wait until we know which axis
+    }
+
+    if (axisLocked !== 'h') return; // vertical — leave to browser
+
+    dragging = true;
+    deltaX = dx;
+
+    // rubber-band resistance at first/last tab
+    const idx = state.activeTabIndex;
+    let effective = deltaX;
+    if ((idx === 0 && deltaX > 0) || (idx === TAB_ORDER.length - 1 && deltaX < 0)) {
+      effective = deltaX * 0.25;
+    }
+
+    const base = -state.activeTabIndex * window.innerWidth;
+    slider.style.transform = `translateX(${base + effective}px)`;
+  }, { passive: true });
+
+  slider.addEventListener('touchend', () => {
+    if (window.innerWidth >= 768) return;
+    if (!dragging || axisLocked !== 'h') return;
+
+    const elapsed = Math.max(1, Date.now() - startTime);
+    const velocity = Math.abs(deltaX) / elapsed; // px/ms
+
+    const shouldAdvance = Math.abs(deltaX) > 60 || velocity > 0.3;
+
+    let newIndex = state.activeTabIndex;
+    if (shouldAdvance) {
+      if (deltaX < 0 && newIndex < TAB_ORDER.length - 1) newIndex++;
+      else if (deltaX > 0 && newIndex > 0) newIndex--;
+    }
+
+    dragging = false;
+    deltaX = 0;
+
+    if (newIndex !== state.activeTabIndex) {
+      switchTab(TAB_ORDER[newIndex]);
+    } else {
+      // snap back to current position
+      slider.style.transition = 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      slider.style.transform = `translateX(${-state.activeTabIndex * window.innerWidth}px)`;
+    }
+  }, { passive: true });
 }
 
 // ============================================================
@@ -1165,6 +1265,110 @@ function generateInsights() {
 // SPLIT TAB
 // ============================================================
 
+// ============================================================
+// MOBILITY DATA
+// ============================================================
+
+const MOBILITY_WARMUP = {
+  title: 'Pre-workout Dynamic Warm-up',
+  duration: '5 min — do before every gym session',
+  exercises: [
+    { name: 'Leg swing forward/back', detail: '10 reps/side' },
+    { name: 'Leg swing lateral', detail: '10 reps/side' },
+    { name: 'Hip circle', detail: '10 reps/side' },
+    { name: "World's greatest stretch", detail: '5 reps/side' },
+    { name: 'Knee-to-wall ankle mob', detail: '10 reps/side', priority: true },
+    { name: 'Bodyweight squat hold', detail: '10 slow reps' },
+    { name: 'Cat-cow', detail: '8 reps' },
+  ],
+};
+
+const MOBILITY_DATA = [
+  {
+    day: 1, name: 'Monday', label: 'Push A — post-workout · 6 min',
+    exercises: [
+      { name: 'Thread-the-needle', detail: '45 sec/side' },
+      { name: 'Doorway chest stretch / band pull-apart', detail: '30 sec' },
+      { name: 'Shoulder CARs', detail: '5 slow circles/side' },
+      { name: 'Standing calf stretch (straight leg)', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (bent knee / soleus)', detail: '45 sec/side' },
+    ],
+  },
+  {
+    day: 2, name: 'Tuesday', label: 'Legs A — post-workout · 8 min',
+    exercises: [
+      { name: 'Elevated heel deep squat hold', detail: '60 sec' },
+      { name: 'Couch stretch', detail: '60 sec/side' },
+      { name: '90/90 hip stretch', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (straight leg)', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (bent knee)', detail: '45 sec/side' },
+    ],
+  },
+  {
+    day: 3, name: 'Wednesday', label: 'Pull A — post-workout · 6 min',
+    exercises: [
+      { name: 'Thread-the-needle', detail: '45 sec/side' },
+      { name: 'Shoulder CARs', detail: '5 slow circles/side' },
+      { name: 'Hip flexor lunge stretch', detail: '45 sec/side' },
+      { name: 'Standing calf stretch', detail: '45 sec/side' },
+    ],
+  },
+  {
+    day: 4, name: 'Thursday', label: 'Push B — post-workout · 6 min',
+    note: 'Same as Monday',
+    exercises: [
+      { name: 'Thread-the-needle', detail: '45 sec/side' },
+      { name: 'Doorway chest stretch / band pull-apart', detail: '30 sec' },
+      { name: 'Shoulder CARs', detail: '5 slow circles/side' },
+      { name: 'Standing calf stretch (straight leg)', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (bent knee)', detail: '45 sec/side' },
+    ],
+  },
+  {
+    day: 5, name: 'Friday', label: 'Pull B / Legs posterior — post-workout · 8 min',
+    note: 'Same as Tuesday (heavy leg work)',
+    exercises: [
+      { name: 'Elevated heel deep squat hold', detail: '60 sec' },
+      { name: 'Couch stretch', detail: '60 sec/side' },
+      { name: '90/90 hip stretch', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (straight leg)', detail: '45 sec/side' },
+      { name: 'Standing calf stretch (bent knee)', detail: '45 sec/side' },
+    ],
+  },
+  {
+    day: 6, name: 'Saturday', label: 'Cardio day — after Zone 2 · 8 min',
+    note: 'Full body — more time available, no heavy lifting today',
+    exercises: [
+      { name: 'Couch stretch', detail: '60 sec/side' },
+      { name: '90/90 hip stretch', detail: '45 sec/side' },
+      { name: 'Elevated heel deep squat hold', detail: '60 sec' },
+      { name: 'Thread-the-needle', detail: '45 sec/side' },
+      { name: 'Shoulder CARs', detail: '5 circles/side' },
+      { name: 'Standing calf stretch (straight + bent knee)', detail: '45 sec/side each' },
+    ],
+  },
+  {
+    day: 0, name: 'Sunday', label: 'Dedicated session · 15–20 min',
+    note: 'This is where real ROM change happens. Use PAILs/RAILs.',
+    pails: true,
+    pailsMethod: 'Get into the stretch → 10 sec push INTO the stretch (isometric) → 10 sec pull OUT of the stretch (active) → move deeper → repeat.',
+    exercises: [
+      { name: 'Couch stretch + PAILs/RAILs', detail: '3 rounds/side', pails: true },
+      { name: '90/90 + PAILs/RAILs', detail: '3 rounds/side', pails: true },
+      { name: 'Deep squat progressive hold (no heel elevation)', detail: '3 × 45 sec, go deeper each round' },
+      { name: 'Thread-the-needle', detail: '60 sec/side (passive, no PAILs)' },
+      { name: 'Calf stretch (both variations)', detail: '60 sec/side' },
+    ],
+  },
+];
+
+const MOBILITY_NOTES = [
+  { priority: true,  text: 'Knee-to-wall is your #1 priority every day. Takes 2 min, fixes your squat.' },
+  { priority: false, text: 'On leg days: put a small plate (~1–2 cm) under your heels on Smith squat while you build ankle mobility.' },
+  { priority: false, text: 'Calf stretch: straight leg = gastrocnemius, bent knee = soleus. Do both — both are tight if your squat falls back.' },
+  { priority: true,  text: "PAILs/RAILs on Sunday is where real ROM change happens. Don't skip it." },
+];
+
 const SPLIT_DATA = [
   {
     day: 1, name: 'Monday', label: 'Push A + Skill',
@@ -1298,6 +1502,7 @@ function renderSplit() {
     <div class="pill-nav">
       <button class="pill-btn ${state.splitView === 'fullweek' ? 'active' : ''}" data-view="fullweek">Full Week</button>
       <button class="pill-btn ${state.splitView === 'gymonly' ? 'active' : ''}" data-view="gymonly">Gym Only</button>
+      <button class="pill-btn ${state.splitView === 'mobility' ? 'active' : ''}" data-view="mobility">Mobility</button>
     </div>
     <div id="split-content"></div>
   `;
@@ -1426,7 +1631,119 @@ function renderSplitContent(view, todayDow) {
     document.getElementById('volume-toggle')?.addEventListener('click', function() {
       document.getElementById('volume-body').classList.toggle('open');
     });
+
+  } else if (view === 'mobility') {
+    renderMobilitySplit(container, todayDow);
   }
+}
+
+function renderMobilitySplit(container, todayDow) {
+  const isMobile = window.innerWidth < 768;
+
+  // Warm-up card (always open)
+  let html = `
+    <div class="split-day-card open" style="margin-bottom:10px;">
+      <div class="split-day-header">
+        <div>
+          <div class="split-day-title">Every Day — Pre-workout Warm-up</div>
+          <div class="split-day-subtitle">${MOBILITY_WARMUP.duration}</div>
+        </div>
+        <svg class="split-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="split-day-body">
+        <div class="mobility-exercise-list">
+          ${MOBILITY_WARMUP.exercises.map(ex => `
+            <div class="mobility-exercise-row ${ex.priority ? 'priority' : ''}">
+              ${ex.priority ? '<div class="mobility-priority-dot"></div>' : '<div class="mobility-dot"></div>'}
+              <div class="mobility-exercise-name">${ex.name}${ex.priority ? ' ★' : ''}</div>
+              <div class="mobility-exercise-detail">${ex.detail}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Per-day cards
+  for (const day of MOBILITY_DATA) {
+    const isToday = day.day === todayDow;
+    const openClass = (isToday || !isMobile) ? ' open' : '';
+
+    const pailsBadge = day.pails
+      ? `<span class="mobility-pails-badge">PAILs/RAILs</span>`
+      : '';
+
+    const pailsExplainer = day.pails && day.pailsMethod
+      ? `<div class="mobility-pails-explainer">${day.pailsMethod}</div>`
+      : '';
+
+    const noteHtml = day.note
+      ? `<div class="mobility-day-note">${day.note}</div>`
+      : '';
+
+    html += `
+      <div class="split-day-card${isToday ? ' today-card' : ''}${openClass}" data-day="${day.day}">
+        <div class="split-day-header">
+          <div>
+            <div class="split-day-title" style="display:flex;align-items:center;gap:8px;">
+              ${day.name} ${pailsBadge}
+            </div>
+            <div class="split-day-subtitle">${day.label}</div>
+          </div>
+          <svg class="split-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        <div class="split-day-body">
+          ${noteHtml}
+          ${pailsExplainer}
+          <div class="mobility-exercise-list">
+            ${day.exercises.map(ex => `
+              <div class="mobility-exercise-row ${ex.pails ? 'has-pails' : ''}">
+                <div class="mobility-dot"></div>
+                <div class="mobility-exercise-name">${ex.name}</div>
+                <div class="mobility-exercise-detail">${ex.detail}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Notes section
+  const notesHtml = MOBILITY_NOTES.map(n => `
+    <div class="mobility-note-item ${n.priority ? 'priority' : ''}">
+      <div class="mobility-note-dot"></div>
+      <div>${n.text}</div>
+    </div>
+  `).join('');
+
+  html += `
+    <div class="collapsible-header" id="mobility-notes-toggle">
+      Notes & Cues
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+    <div class="collapsible-body" id="mobility-notes-body">
+      <div class="mobility-notes-list">${notesHtml}</div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.split-day-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.split-day-card').classList.toggle('open');
+    });
+  });
+
+  document.getElementById('mobility-notes-toggle')?.addEventListener('click', function () {
+    document.getElementById('mobility-notes-body').classList.toggle('open');
+  });
 }
 
 // ============================================================
@@ -1794,7 +2111,8 @@ async function startApp() {
   }
 
   loadHiddenBuiltins();
-  switchTab('today');
+  switchTab('today', false); // no animation on first load
+  initSwipe();
 }
 
 // ============================================================

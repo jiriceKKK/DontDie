@@ -38,11 +38,34 @@
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
+  /* hide scrollbars globally — scroll still works */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* prevent long-press context menu and accidental text selection */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* re-enable text input selection */
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 html {
   height: 100%;
   overflow: hidden;
+  /* disable double-tap zoom */
+  touch-action: manipulation;
+  /* prevent iOS font-size inflation */
+  -webkit-text-size-adjust: 100%;
+  /* no rubber-band on the root */
+  overscroll-behavior: none;
 }
 
 body {
@@ -53,6 +76,8 @@ body {
   line-height: 1.5;
   height: 100%;
   overflow: hidden;
+  touch-action: manipulation;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -67,6 +92,8 @@ button {
 input, textarea, select {
   font-family: inherit;
   color: inherit;
+  /* prevents iOS zoom-in when tapping inputs with font-size < 16px */
+  font-size: 16px !important;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -288,10 +315,21 @@ code {
 
 .main-content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom));
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden; /* clipping box for the slider */
+  position: relative;
+}
+
+/* ============================================================
+   TAB SLIDER (mobile swipe container)
+   ============================================================ */
+#tab-slider {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-y; /* browser handles vertical, JS handles horizontal */
+  will-change: transform;
+  /* initial position set by JS — no transition until after first switchTab */
 }
 
 /* ============================================================
@@ -411,19 +449,16 @@ code {
    TAB PANELS
    ============================================================ */
 .tab-panel {
-  display: none;
+  /* mobile: full-width slide-in pane that the slider positions */
+  min-width: 100vw;
+  width: 100vw;
+  height: 100%;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: tab-in 0.15s ease-out forwards;
-}
-
-.tab-panel.active {
-  display: block;
-}
-
-@keyframes tab-in {
-  to { opacity: 1; transform: translateY(0); }
+  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 8px);
 }
 
 /* ============================================================
@@ -1715,15 +1750,40 @@ code {
    DESKTOP OVERRIDES (≥768px)
    ============================================================ */
 @media (min-width: 768px) {
-  .nav-top   { display: flex; }
+  .nav-top    { display: flex; }
   .nav-bottom { display: none; }
 
   .main-content {
-    padding-bottom: 0;
-    padding-top: 0;
+    overflow-y: auto;
   }
 
-  .tab-panel { max-width: 800px; margin: 0 auto; padding: 24px; }
+  /* on desktop: revert slider to a normal block container */
+  #tab-slider {
+    display: block;
+    height: auto;
+    overflow: visible;
+    transform: none !important;
+    transition: none !important;
+    touch-action: auto;
+    will-change: auto;
+  }
+
+  /* on desktop: show/hide panels with .active */
+  .tab-panel {
+    display: none;
+    min-width: unset;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+    padding-bottom: 24px;
+  }
+
+  .tab-panel.active {
+    display: block;
+  }
 
   .today-day { font-size: 24px; }
 
@@ -1738,6 +1798,145 @@ code {
   .week-fraction { font-size: 11px; }
   .pin-keypad { grid-template-columns: repeat(3, 64px); gap: 10px; }
   .pin-key { width: 64px; height: 64px; font-size: 20px; }
+}
+
+/* ============================================================
+   MOBILITY SPLIT
+   ============================================================ */
+
+.mobility-exercise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mobility-exercise-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mobility-exercise-row:last-child { border-bottom: none; }
+
+.mobility-exercise-row.priority {
+  background: linear-gradient(90deg, rgba(110,231,183,0.04) 0%, transparent 100%);
+  margin: 0 -4px;
+  padding: 8px 4px;
+  border-radius: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mobility-exercise-row.has-pails .mobility-exercise-name {
+  color: var(--purple);
+}
+
+.mobility-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  margin-top: 7px;
+}
+
+.mobility-priority-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  margin-top: 6px;
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.mobility-exercise-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.mobility-exercise-row.priority .mobility-exercise-name {
+  color: var(--accent);
+}
+
+.mobility-exercise-detail {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mobility-day-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-chip);
+  border-left: 2px solid var(--border);
+}
+
+.mobility-pails-explainer {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(167,139,250,0.06);
+  border: 1px solid rgba(167,139,250,0.2);
+  border-radius: var(--radius-chip);
+  line-height: 1.55;
+}
+
+.mobility-pails-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--purple);
+  background: rgba(167,139,250,0.12);
+  border: 1px solid rgba(167,139,250,0.25);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  vertical-align: middle;
+}
+
+.mobility-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.mobility-note-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.mobility-note-item.priority {
+  color: var(--text-primary);
+}
+
+.mobility-note-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.mobility-note-item.priority .mobility-note-dot {
+  background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
 }
 
 /* Collapsible section */
