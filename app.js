@@ -1561,7 +1561,7 @@ function renderSplitContent(view, todayDow) {
       });
     });
 
-  } else {
+  } else if (view === 'gymonly') {
     // Gym only
     const gymDays = SPLIT_DATA.filter(d => d.gym);
     let html = '';
