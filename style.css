@@ -450,6 +450,7 @@ code {
    ============================================================ */
 .tab-panel {
   /* mobile: full-width slide-in pane that the slider positions */
+  display: block;
   min-width: 100vw;
   width: 100vw;
   height: 100%;

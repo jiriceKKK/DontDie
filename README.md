@@ -123,13 +123,35 @@ Mobility runs every day. OAH is skipped Wednesday (CNS rest).
 ## File structure
 
 ```
-index.html   — app shell, PIN screen, navigation
-style.css    — all styles and animations
-app.js       — tab rendering, habit logic, UI state
-db.js        — Supabase client and all database functions
-config.js    — Supabase credentials + PIN hash (edit this)
-README.md    — this file
+index.html          — app shell, PIN screen, navigation skeleton
+style.css           — all styles and animations
+js/
+  main.js           — entry point: startApp(), PIN gate, online/offline wiring
+  config.js         — Supabase credentials + PIN hash  ← edit this file
+  db.js             — Supabase client and all database functions
+  constants.js      — BUILT_IN_HABITS, category maps, TAB_ORDER, day/month names
+  state.js          — shared mutable app state object
+  habits.js         — habit queries, streak/stats computation
+  navigation.js     — switchTab(), initSwipe(), registerRenders(), getPanelWidth()
+  sync.js           — offline queue, flushQueue(), setOnline()
+  auth.js           — PIN hashing, initPin(), isConfigValid()
+  utils/
+    date.js         — formatDate, parseDate, today, addDays, getMondayOfWeek, …
+  ui/
+    toast.js        — showToast()
+    modal.js        — openModal(), closeModal()
+    confetti.js     — launchConfetti()
+    progress.js     — updateProgressRing()
+  tabs/
+    today.js        — renderToday(), renderTodayHabits(), toggleHabit(), day-log modal
+    week.js         — renderWeek()
+    stats.js        — renderStats(), bar chart, heatmap, activity, insights
+    split.js        — renderSplit(), all split/mobility data and sub-renderers
+    settings.js     — renderSettings(), custom habit CRUD, loadHiddenBuiltins()
+README.md           — this file
 ```
+
+The app uses native ES modules (`<script type="module">`). No build step, no bundler — works directly on GitHub Pages over HTTPS.
 
 ---
 

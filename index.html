@@ -153,9 +153,9 @@
   <!-- Confetti container -->
   <div id="confetti-container" class="confetti-container"></div>
 
+  <!-- Supabase sets window.supabase — must remain a classic script, not a module -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="db.js"></script>
-  <script src="app.js"></script>
+  <!-- ES-module entry point — imports everything else under js/ -->
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c app.js)",
+      "Bash(node -c db.js)",
+      "Bash(python -m http.server 8888)",
+      "Read(//tmp/**)",
+      "Bash(python -m http.server 8765)"
+    ]
+  }
+}
