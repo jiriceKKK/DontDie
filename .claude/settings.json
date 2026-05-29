@@ -5,7 +5,8 @@
       "Bash(node -c db.js)",
       "Bash(python -m http.server 8888)",
       "Read(//tmp/**)",
-      "Bash(python -m http.server 8765)"
+      "Bash(python -m http.server 8765)",
+      "Bash(node _server.mjs)"
     ]
   }
 }

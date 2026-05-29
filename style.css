@@ -326,7 +326,7 @@ code {
   display: flex;
   height: 100%;
   width: 100%;
-  overflow: hidden;
+  overflow: visible; /* .main-content does the clipping — slider must not clip its own transformed children */
   touch-action: pan-y; /* browser handles vertical, JS handles horizontal */
   will-change: transform;
   /* initial position set by JS — no transition until after first switchTab */
