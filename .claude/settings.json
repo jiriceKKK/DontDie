@@ -6,7 +6,17 @@
       "Bash(python -m http.server 8888)",
       "Read(//tmp/**)",
       "Bash(python -m http.server 8765)",
-      "Bash(node _server.mjs)"
+      "Bash(node _server.mjs)",
+      "Bash(node _verify_chain.mjs)",
+      "Bash(npx playwright *)",
+      "Bash(node _verify_webkit.mjs)",
+      "Bash(curl -s -o /dev/null -w \"root=%{http_code}\\\\n\" http://127.0.0.1:8765/)",
+      "Bash(node _debug_load.mjs)",
+      "Bash(node _debug_load2.mjs)",
+      "Bash(node _debug_load3.mjs)",
+      "Bash(curl -s \"http://localhost:8765/js/main.js?v=2\")",
+      "Bash(powershell -Command 'Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }')",
+      "Bash(rm _server.mjs _verify_chain.mjs _verify_webkit.mjs _verify_final.mjs _debug_load.mjs _debug_load2.mjs _debug_load3.mjs _debug.png _webkit_after_chain.png)"
     ]
   }
 }
