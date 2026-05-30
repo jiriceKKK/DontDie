@@ -60,9 +60,9 @@ CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH C
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
-### 4 — Fill in `config.js`
+### 4 — Fill in `js/config.js`
 
-Open `config.js` and replace the placeholder values:
+Open `js/config.js` and replace the placeholder values:
 
 | Setting | Where to find it |
 |---|---|
@@ -81,7 +81,7 @@ Your app will be live at `https://YOUR_USERNAME.github.io/DontDie/`.
 
 ## Changing the PIN
 
-The PIN is never stored in plain text. Only a SHA-256 hash lives in `config.js`.
+The PIN is never stored in plain text. Only a SHA-256 hash lives in `js/config.js`.
 
 To compute the hash of a new PIN, run this in your browser console:
 
@@ -89,10 +89,10 @@ To compute the hash of a new PIN, run this in your browser console:
 const pin = "YOUR_NEW_PIN";
 const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
 const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-console.log(hex); // paste this into config.js as PIN_HASH
+console.log(hex); // paste this into js/config.js as PIN_HASH
 ```
 
-Replace `PIN_HASH` in `config.js` with the output.
+Replace `PIN_HASH` in `js/config.js` with the output.
 
 ---
 
@@ -155,6 +155,26 @@ The app uses native ES modules (`<script type="module">`). No build step, no bun
 
 ---
 
+## Adding a new tab / category
+
+The page system is data-driven, so adding a whole new section (e.g. a "Sleep"
+category with its own page) is a few small, local edits — no rewrite:
+
+1. **Create the module** — `js/tabs/sleep.js`, exporting a `renderSleep()` that
+   fills `#tab-sleep` (mirror the shape of `tabs/week.js`).
+2. **Register the id** — add `'sleep'` to `TAB_ORDER` in `js/constants.js`.
+   This alone makes swipe navigation and the pre-render loop include it.
+3. **Add the markup** — in `index.html`, add a `<button … data-tab="sleep">` to
+   both navs and a `<div class="tab-panel" id="tab-sleep" data-tab="sleep">`
+   inside `#tab-slider`.
+4. **Wire the render** — import `renderSleep` in `js/main.js` and add it to the
+   `renderTab()` dispatcher map.
+
+`switchTab()`, the swipe handler, and nav-button wiring all read from
+`TAB_ORDER` and the registered dispatcher, so nothing else needs touching.
+
+---
+
 ## Offline behavior
 
 When Supabase is unreachable, a banner appears at the top. Habit toggles still work — changes are queued in memory and retried every 30 seconds automatically. Data is not persisted offline if you close the tab before it syncs.
@@ -163,6 +183,6 @@ When Supabase is unreachable, a banner appears at the top. Habit toggles still w
 
 ## Security note
 
-The PIN hash in `config.js` is visible in the public repo. This is fine — SHA-256 of a 4-digit PIN cannot be reversed in practice without brute-forcing all 10,000 combinations, and the data itself (habit logs) is not sensitive. The PIN just prevents casual access.
+The PIN hash in `js/config.js` is visible in the public repo. This is fine — SHA-256 of a 4-digit PIN cannot be reversed in practice without brute-forcing all 10,000 combinations, and the data itself (habit logs) is not sensitive. The PIN just prevents casual access.
 
 If you want stronger security, move the repo to private or use Supabase Row Level Security with a proper auth flow.
