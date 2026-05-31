@@ -1,8 +1,12 @@
 import { state } from './state.js';
-import { TAB_ORDER } from './constants.js';
 
-// Tab render functions registered by main.js — navigation never imports tabs directly,
-// which prevents circular dependencies (tabs can safely import switchTab from here).
+// The ordered tab ids of the ACTIVE mode. The mode controller sets state.modeTabs
+// whenever the mode changes; navigation stays mode-agnostic and just reads it.
+// (Kept as a helper so a missing/empty value degrades safely to [].)
+function tabOrder() { return state.modeTabs || []; }
+
+// Tab render functions registered by the mode controller — navigation never imports
+// tabs directly, which prevents circular dependencies (tabs can safely import switchTab).
 let _renders = {};
 
 export function registerRenders(renders) {
@@ -20,7 +24,7 @@ export function getPanelWidth() {
 }
 
 export function switchTab(tabName, animate = true) {
-  const newIndex = TAB_ORDER.indexOf(tabName);
+  const newIndex = tabOrder().indexOf(tabName);
   if (newIndex === -1) return;
 
   state.activeTab      = tabName;
@@ -36,7 +40,7 @@ export function switchTab(tabName, animate = true) {
       slider.style.transition = animate
         ? 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)'
         : 'none';
-      slider.style.transform = `translateX(${-newIndex * getPanelWidth()}px)`;
+      slider.style.transform = `translate3d(${-newIndex * getPanelWidth()}px, 0, 0)`;
     }
   } else {
     document.querySelectorAll('.tab-panel').forEach(panel => {
@@ -44,7 +48,10 @@ export function switchTab(tabName, animate = true) {
     });
   }
 
-  if (_renders[tabName]) _renders[tabName]();
+  if (_renders[tabName]) {
+    try { _renders[tabName](); }
+    catch (err) { console.error(`[nav] render failed for tab "${tabName}":`, err); }
+  }
 }
 
 export function initSwipe() {
@@ -54,6 +61,10 @@ export function initSwipe() {
   let startX = 0, startY = 0, deltaX = 0;
   let axisLocked = null; // 'h' | 'v' | null
   let startTime = 0, dragging = false, tracking = false;
+  // Cache the panel width per-gesture so we never read offsetWidth (a forced
+  // synchronous layout) inside touchmove — reading it every frame is the main
+  // cause of jittery drags. Refreshed on touchstart and resize only.
+  let panelWidth = getPanelWidth();
 
   // touchstart on slider — passive is fine, we only record state
   slider.addEventListener('touchstart', (e) => {
@@ -66,6 +77,7 @@ export function initSwipe() {
     dragging   = false;
     tracking   = true;
     startTime  = Date.now();
+    panelWidth = getPanelWidth();
     slider.style.transition = 'none';
   }, { passive: true });
 
@@ -95,11 +107,11 @@ export function initSwipe() {
 
     const idx = state.activeTabIndex;
     let effective = deltaX;
-    if ((idx === 0 && deltaX > 0) || (idx === TAB_ORDER.length - 1 && deltaX < 0)) {
+    if ((idx === 0 && deltaX > 0) || (idx === tabOrder().length - 1 && deltaX < 0)) {
       effective = deltaX * 0.25; // rubber-band at edges
     }
-    const base = -state.activeTabIndex * getPanelWidth();
-    slider.style.transform = `translateX(${base + effective}px)`;
+    const base = -state.activeTabIndex * panelWidth;
+    slider.style.transform = `translate3d(${base + effective}px, 0, 0)`;
   }, { passive: false });
 
   // touchend / touchcancel on window — covers the case where the finger
@@ -116,17 +128,17 @@ export function initSwipe() {
     const shouldAdvance = Math.abs(deltaX) > 60 || velocity > 0.3;
     let newIndex = state.activeTabIndex;
     if (shouldAdvance) {
-      if (deltaX < 0 && newIndex < TAB_ORDER.length - 1) newIndex++;
-      else if (deltaX > 0 && newIndex > 0)               newIndex--;
+      if (deltaX < 0 && newIndex < tabOrder().length - 1) newIndex++;
+      else if (deltaX > 0 && newIndex > 0)                newIndex--;
     }
     dragging = false;
     deltaX   = 0;
 
     if (newIndex !== state.activeTabIndex) {
-      switchTab(TAB_ORDER[newIndex]);
+      switchTab(tabOrder()[newIndex]);
     } else {
       slider.style.transition = 'transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      slider.style.transform  = `translateX(${-state.activeTabIndex * getPanelWidth()}px)`;
+      slider.style.transform  = `translate3d(${-state.activeTabIndex * panelWidth}px, 0, 0)`;
     }
   }
   window.addEventListener('touchend',    finish, { passive: true });
@@ -135,8 +147,9 @@ export function initSwipe() {
   // Re-align current tab after resize / orientation change so panels don't drift.
   window.addEventListener('resize', () => {
     if (window.innerWidth < 768) {
+      panelWidth = getPanelWidth();
       slider.style.transition = 'none';
-      slider.style.transform  = `translateX(${-state.activeTabIndex * getPanelWidth()}px)`;
+      slider.style.transform  = `translate3d(${-state.activeTabIndex * panelWidth}px, 0, 0)`;
     }
   });
 }

@@ -147,6 +147,74 @@ export async function dbDeleteAllLogs() {
   }
 }
 
+// ---- split plan (single-row JSON document) --------------------------------
+// Gracefully returns null if the table doesn't exist yet, so the app falls
+// back to the localStorage copy / default seed without breaking.
+export async function dbGetSplitConfig() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('split_config')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getSplitConfig:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveSplitConfig(splitData) {
+  try {
+    const { error } = await getSupabase()
+      .from('split_config')
+      .upsert(
+        { id: 1, data: splitData, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveSplitConfig:', err);
+    return { error: err };
+  }
+}
+
+// ---- mental-health data (single-row JSON document) ------------------------
+// Same graceful pattern as split_config: returns null if the table is absent,
+// so the app falls back to the localStorage copy without breaking.
+export async function dbGetMentalStore() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('mh_store')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getMentalStore:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveMentalStore(mhData) {
+  try {
+    const { error } = await getSupabase()
+      .from('mh_store')
+      .upsert(
+        { id: 1, data: mhData, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveMentalStore:', err);
+    return { error: err };
+  }
+}
+
 export async function dbExportAll() {
   try {
     const [logsRes, habitsRes] = await Promise.all([

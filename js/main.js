@@ -1,53 +1,57 @@
 import { state } from './state.js';
-import { TAB_ORDER } from './constants.js';
 import { formatDate, today, getNDaysAgo } from './utils/date.js';
-import { dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection } from './db.js';
-import { registerRenders, switchTab, initSwipe } from './navigation.js';
+import {
+  dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection,
+  dbGetSplitConfig, dbGetMentalStore,
+} from './db.js';
+import { initSplit } from './split/store.js';
+import { initMental } from './mental/store.js';
+import { initSwipe } from './navigation.js';
+import { initModes } from './modes/controller.js';
 import { setOnline, startRetryInterval } from './sync.js';
-import { renderToday } from './tabs/today.js';
-import { renderWeek } from './tabs/week.js';
-import { renderStats } from './tabs/stats.js';
-import { renderSplit } from './tabs/split.js';
-import { renderSettings, loadHiddenBuiltins } from './tabs/settings.js';
+import { loadHiddenBuiltins } from './tabs/settings.js';
 import { initPin, isConfigValid } from './auth.js';
 
-// Centralised tab-render dispatcher — used both for initial pre-render and
-// as the registered callback in switchTab so every navigation re-renders the
-// active tab with fresh data.
-function renderTab(tabName) {
-  const renders = {
-    today:    () => renderToday(today()),
-    week:     renderWeek,
-    stats:    renderStats,
-    split:    renderSplit,
-    settings: renderSettings,
-  };
-  if (renders[tabName]) renders[tabName]();
+// Last-resort visible error so a fatal startup failure never leaves a blank
+// black screen. Uses inline styles so it works even if CSS failed to load.
+function showFatal(err) {
+  console.error('[startApp] fatal:', err);
+  let box = document.getElementById('fatal-error');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'fatal-error';
+    box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d0d0f;color:#f0f0f4;padding:24px;font:14px/1.5 system-ui,sans-serif;overflow:auto;';
+    document.body.appendChild(box);
+  }
+  box.innerHTML = `<h2 style="color:#f87171;margin-bottom:8px;">Something went wrong starting the app</h2>
+    <p style="color:#8888a0;margin-bottom:12px;">This is usually a stale cache — try a hard refresh (Ctrl/Cmd+Shift+R) or an incognito window.</p>
+    <pre style="color:#fbbf24;white-space:pre-wrap;font-size:12px;">${String((err && err.stack) || err).replace(/</g, '&lt;')}</pre>`;
 }
 
 async function startApp() {
-  const app = document.getElementById('app');
-  app.classList.remove('hidden');
+ try {
+  document.getElementById('app').classList.remove('hidden');
 
-  // Wire up nav buttons
-  document.querySelectorAll('.nav-item[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-  });
-
-  // Load data in parallel before rendering anything
+  // Load everything in parallel before rendering.
   const rangeEnd   = formatDate(today());
   const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
 
-  const [logsRes, customRes, connRes] = await Promise.all([
+  const [logsRes, customRes, connRes, splitRes, mentalRes] = await Promise.all([
     dbGetLogsForRange(rangeStart, rangeEnd),
     dbGetCustomHabits(),
     dbCheckConnection(),
+    dbGetSplitConfig(),
+    dbGetMentalStore(),
   ]);
 
-  state.logsByDate   = logsRes.data  || {};
+  state.logsByDate   = logsRes.data   || {};
   state.customHabits = customRes.data || [];
   state.connectionOk = connRes;
   state.initialized  = true;
+
+  // Seed/load the editable split + mental-health data (cloud → local → default).
+  initSplit(splitRes.data);
+  initMental(mentalRes.data);
 
   if (!connRes) {
     setOnline(false);
@@ -56,36 +60,34 @@ async function startApp() {
 
   loadHiddenBuiltins();
 
-  // Register the render dispatcher so switchTab knows what to call
-  registerRenders(Object.fromEntries(TAB_ORDER.map(tab => [tab, () => renderTab(tab)])));
+  // The mode controller builds the nav + panels for the default mode,
+  // registers its renderers, pre-renders, and positions the slider.
+  initModes();
 
-  // Pre-render ALL tabs so neighbouring panels have content before the user
-  // starts swiping — this is the core fix for the empty-panel swipe bug.
-  for (const tab of TAB_ORDER) {
-    renderTab(tab);
-  }
-
-  // Now position the slider on Today (no animation on first load)
-  switchTab('today', false);
-
-  // Initialise touch swipe after panels are populated
+  // Touch swipe is mode-agnostic (reads state.modeTabs) — init once.
   initSwipe();
 
-  // Online / offline events
   window.addEventListener('online',  () => setOnline(true));
   window.addEventListener('offline', () => setOnline(false));
+ } catch (err) {
+  showFatal(err);
+ }
 }
 
 async function main() {
-  if (!isConfigValid()) {
-    document.getElementById('setup-screen').classList.remove('hidden');
-    return;
-  }
+  try {
+    if (!isConfigValid()) {
+      document.getElementById('setup-screen').classList.remove('hidden');
+      return;
+    }
 
-  if (sessionStorage.getItem('auth') === '1') {
-    startApp();
-  } else {
-    initPin(startApp);
+    if (sessionStorage.getItem('auth') === '1') {
+      startApp();
+    } else {
+      initPin(startApp);
+    }
+  } catch (err) {
+    showFatal(err);
   }
 }
 

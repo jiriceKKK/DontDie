@@ -6,11 +6,32 @@ A personal habit tracker and workout log for a structured PPL training split. Ru
 
 ## What it is
 
+A multi-mode health tracker. A **mode switcher** (top-left) flips the whole app
+— its pages, bottom nav, and accent theme — between modes:
+
+- **Physical Health** (green) — Today · Week · Stats · Split · Settings
+- **Mental Health** (calm blue) — Check-in · Tasks · Journal · Tools · Stats
+
+Each mode has its own ordered tabs and mobile swipe navigation. Adding a future
+mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
+
+### Physical Health
+
 - **Today tab** — daily habit checklist with optimistic sync
 - **Week tab** — 7-day grid overview with per-day completion
 - **Stats tab** — weekly bar chart, heatmap (GitHub-style), streak counter, per-habit analytics
-- **Split tab** — full weekly schedule + detailed gym session breakdown
+- **Split tab** — editable, data-driven weekly plan (Full Week / Gym Only / Mobility) with an in-tab edit mode, a reusable exercise library, and a dynamic weekly-volume summary (direct + indirect sets)
 - **Settings tab** — add custom habits, manage built-ins, export/clear data
+
+### Mental Health
+
+- **Check-in** — one entry per day: mood (emoji + score) plus 1–5 scales for stress, tension, energy, sleep and social, with quick tags and a one-line note
+- **Tasks** — temporary, date-based to-dos (Today / Tomorrow), pending/done — not habits
+- **Journal** — guided templates (quick reflection, CBT thought record, stress dump, trigger log, what helped / what made it worse, tomorrow reset)
+- **Tools** — breathing timer, 5-4-3-2-1 grounding, quick reset, "what can I control?", decompress
+- **Stats** — factual patterns only: mood/stress/energy trends, sleep vs mood, top tags, task completion, best/worst weekday, recent-change summary
+
+Mental Health is data-based and non-clinical — no diagnoses, no advice, no filler.
 
 Data lives in Supabase (free tier is plenty). The app works offline and queues changes for retry.
 
@@ -53,12 +74,36 @@ CREATE TABLE custom_habits (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Editable training split (single JSON document)
+CREATE TABLE split_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT split_config_singleton CHECK (id = 1)
+);
+
+-- Mental Health data: check-ins, tasks, journal (single JSON document)
+CREATE TABLE mh_store (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT mh_store_singleton CHECK (id = 1)
+);
+
 ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON split_config FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
+
+> The `split_config` and `mh_store` tables are optional. Without them those
+> features still work fully from `localStorage` — they just won't sync across
+> devices until the tables exist.
 
 ### 4 — Fill in `js/config.js`
 
@@ -126,15 +171,22 @@ Mobility runs every day. OAH is skipped Wednesday (CNS rest).
 index.html          — app shell, PIN screen, navigation skeleton
 style.css           — all styles and animations
 js/
-  main.js           — entry point: startApp(), PIN gate, online/offline wiring
+  main.js           — entry point: load data, then hand off to the mode controller
   config.js         — Supabase credentials + PIN hash  ← edit this file
   db.js             — Supabase client and all database functions
-  constants.js      — BUILT_IN_HABITS, category maps, TAB_ORDER, day/month names
-  state.js          — shared mutable app state object
+  constants.js      — BUILT_IN_HABITS, category maps, day/month names
+  state.js          — shared mutable app state (incl. active mode + mental data)
   habits.js         — habit queries, streak/stats computation
-  navigation.js     — switchTab(), initSwipe(), registerRenders(), getPanelWidth()
+  navigation.js     — switchTab(), initSwipe() — mode-agnostic, reads state.modeTabs
   sync.js           — offline queue, flushQueue(), setOnline()
   auth.js           — PIN hashing, initPin(), isConfigValid()
+  modes/
+    registry.js     — the mode list + their tabs (add a new mode here)
+    controller.js   — setMode(), builds nav + panels, mode switcher menu
+  mental/
+    store.js        — Mental Health data: load/seed/save + CRUD + stats helpers
+    journalTemplates.js — guided journal template definitions
+    tabs/           — checkin · tasks · journal · tools · stats
   utils/
     date.js         — formatDate, parseDate, today, addDays, getMondayOfWeek, …
   ui/
@@ -142,14 +194,35 @@ js/
     modal.js        — openModal(), closeModal()
     confetti.js     — launchConfetti()
     progress.js     — updateProgressRing()
+  split/
+    defaultSplit.js — the migrated default plan (seed only)
+    store.js        — split load/seed/save, volume math, exercise/library CRUD
   tabs/
     today.js        — renderToday(), renderTodayHabits(), toggleHabit(), day-log modal
     week.js         — renderWeek()
     stats.js        — renderStats(), bar chart, heatmap, activity, insights
-    split.js        — renderSplit(), all split/mobility data and sub-renderers
+    split.js        — renderSplit(), normal + edit-mode views, gym/mobility edit modals
     settings.js     — renderSettings(), custom habit CRUD, loadHiddenBuiltins()
 README.md           — this file
 ```
+
+### The editable Split
+
+The Split tab is data-driven. The plan (days, gym exercises, mobility work,
+exercise library, muscle volume tags, target ranges) lives as one JSON document:
+
+- **at runtime** in `state.split`,
+- **persisted** to `localStorage` immediately on every edit, and
+- **synced** best-effort to the `split_config` Supabase row (newer `updatedAt` wins).
+
+Tap **✎ Edit** in the Split tab to add/edit/delete gym and mobility exercises,
+set planned sets/reps/rest, assign days, organise sections, and manage volume
+tags. Each gym exercise can tag multiple muscles as **direct** or **indirect**
+(each toggleable on/off for counting); the Gym Only volume summary recomputes
+live from planned sets — the big number is direct volume, the small `+n` is
+indirect. Mobility uses a flexible **detail** field (sec / rounds / reps / rest)
+instead of muscle volume. The first run seeds everything from
+`js/split/defaultSplit.js`, after which the UI reads only from the saved plan.
 
 The app uses native ES modules (`<script type="module">`). No build step, no bundler — works directly on GitHub Pages over HTTPS.
 

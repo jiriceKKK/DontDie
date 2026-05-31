@@ -1,0 +1,65 @@
+// ============================================================
+// MODE REGISTRY — the list of app modes and their tabs.
+//
+// Adding a future mode (Sleep, Nutrition, Focus, …) = add one
+// entry here with its tabs. Nothing else in the nav/swipe system
+// is hardcoded to a specific mode.
+// ============================================================
+
+import { today } from '../utils/date.js';
+
+// Physical Health (existing)
+import { renderToday } from '../tabs/today.js';
+import { renderWeek } from '../tabs/week.js';
+import { renderStats } from '../tabs/stats.js';
+import { renderSplit } from '../tabs/split.js';
+import { renderSettings } from '../tabs/settings.js';
+
+// Mental Health (new)
+import { renderCheckin } from '../mental/tabs/checkin.js';
+import { renderTasks } from '../mental/tabs/tasks.js';
+import { renderJournal } from '../mental/tabs/journal.js';
+import { renderTools } from '../mental/tabs/tools.js';
+import { renderMentalStats } from '../mental/tabs/stats.js';
+
+// Icon inner-SVG (wrapped in <svg class="nav-icon"> by the nav builder).
+const ICON = {
+  today:    '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  week:     '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/>',
+  bars:     '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+  split:    '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  checkin:  '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+  tasks:    '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  journal:  '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  tools:    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+};
+
+export const MODES = [
+  {
+    id: 'physical',
+    label: 'Physical Health',
+    tabs: [
+      { id: 'today',    label: 'Today',    icon: ICON.today,    render: () => renderToday(today()) },
+      { id: 'week',     label: 'Week',     icon: ICON.week,     render: renderWeek },
+      { id: 'stats',    label: 'Stats',    icon: ICON.bars,     render: renderStats },
+      { id: 'split',    label: 'Split',    icon: ICON.split,    render: renderSplit },
+      { id: 'settings', label: 'Settings', icon: ICON.settings, render: renderSettings },
+    ],
+  },
+  {
+    id: 'mental',
+    label: 'Mental Health',
+    tabs: [
+      { id: 'checkin',  label: 'Check-in', icon: ICON.checkin,  render: renderCheckin },
+      { id: 'tasks',    label: 'Tasks',    icon: ICON.tasks,    render: renderTasks },
+      { id: 'journal',  label: 'Journal',  icon: ICON.journal,  render: renderJournal },
+      { id: 'tools',    label: 'Tools',    icon: ICON.tools,    render: renderTools },
+      { id: 'stats',    label: 'Stats',    icon: ICON.bars,     render: renderMentalStats },
+    ],
+  },
+];
+
+export function getMode(id) {
+  return MODES.find(m => m.id === id) || MODES[0];
+}
