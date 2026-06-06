@@ -9,6 +9,7 @@ export const state = {
   stimulation: null,         // stimulation data (loaded by js/stimulation/store.js)
   stimDate: null,            // Log page: which day is being edited (set by the tab)
   stimBlock: 0,              // Log page: current block index in the stepper
+  stimView: 'cheap',         // Dashboard metric toggle: 'cheap' | 'productive' (session only)
 
   activeTab: 'today',
   activeTabIndex: 0,

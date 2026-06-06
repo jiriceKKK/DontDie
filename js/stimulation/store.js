@@ -306,6 +306,129 @@ export function baselinePerBlock() {
   return baselineDaily() / blocks;
 }
 
+// ---- separated metrics: Cheap Stim vs Productive vs Recovery --------------
+// The dashboard does NOT treat all stimulation as one number. An activity's
+// category decides which metric its score feeds, so gym/OAH/study/coding raise
+// Productive Activation but never Cheap Stim Load, while Instagram/TikTok/porn
+// raise Cheap Stim Load but never Productive. The formula stays a simple
+// duration-weighted sum — only the routing changes.
+//
+//   high_stim / medium_stim  → cheap      = +score
+//   productive_stim          → productive = +score
+//   recovery                 → recovery   = score (negative; shown as an effect)
+//   low_stim                 → neutral    (feeds nothing)
+//
+// Cheap and Productive are kept non-negative per block so each curve reads as
+// "how much of this happened in this block". Recovery is reported separately.
+export function metricWeights(category, score) {
+  const s = num(score, 0);
+  const pos = Math.max(0, s);
+  const neg = Math.min(0, s); // ≤ 0
+  switch (category) {
+    case 'high_stim':       return { cheap: pos, productive: 0,   recovery: 0 };
+    case 'medium_stim':     return { cheap: pos, productive: 0,   recovery: 0 };
+    case 'productive_stim': return { cheap: 0,   productive: pos, recovery: 0 };
+    case 'low_stim':        return { cheap: 0,   productive: 0,   recovery: 0 };
+    case 'recovery':        return { cheap: 0,   productive: 0,   recovery: neg };
+    default:                return { cheap: pos, productive: 0,   recovery: 0 };
+  }
+}
+
+// Duration-weighted {cheap, productive, recovery} for one block.
+function blockMetrics(date, idx) {
+  const block = dayBlocks().find(b => b.index === idx);
+  const len = block ? block.minutes : state.stimulation.settings.blockMinutes;
+  const out = { cheap: 0, productive: 0, recovery: 0 };
+  if (!len) return out;
+  for (const e of blockEntries(date, idx)) {
+    const ex = findActivity(e.activityId);
+    if (!ex) continue;
+    const w = metricWeights(ex.category, ex.stimulationScore);
+    const frac = (num(e.durationMinutes, 0) / len) * num(e.intensity, 1);
+    out.cheap += w.cheap * frac;
+    out.productive += w.productive * frac;
+    out.recovery += w.recovery * frac;
+  }
+  return out;
+}
+
+// One metric for one block. metric ∈ 'cheap' | 'productive' | 'recovery'.
+export function blockMetric(date, idx, metric) {
+  return num(blockMetrics(date, idx)[metric], 0);
+}
+
+// Sum of one metric across the whole day.
+export function dailyMetric(date, metric) {
+  return dayBlocks().reduce((sum, b) => sum + blockMetric(date, b.index, metric), 0);
+}
+
+// Per-block curve for one metric → [{ ...block, load }].
+export function metricCurve(date, metric) {
+  return dayBlocks().map(b => ({ ...b, load: blockMetric(date, b.index, metric) }));
+}
+
+// Recent daily values of one metric (excluding today), only days with data.
+function recentDailyMetric(n, metric) {
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const date = formatDate(addDays(today(), -i));
+    if (hasAnyEntries(date)) out.push(dailyMetric(date, metric));
+  }
+  return out;
+}
+
+// Recent average for one metric. 0 when there's no history yet.
+//   Cheap Stim Baseline  = average recent daily cheap load (high/medium days raise it).
+//   Productive Average   = average recent daily productive activation.
+// Because cheap excludes productive_stim, productive activity can never raise
+// the Cheap Stim Baseline.
+export function baselineMetricDaily(metric) {
+  const loads = recentDailyMetric(state.stimulation.settings.baselineWindowDays, metric);
+  return loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0;
+}
+
+// Per-block baseline for one metric — shares the chart's Y scale with the curve.
+export function baselineMetricPerBlock(metric) {
+  const blocks = dayBlocks().length || 1;
+  return baselineMetricDaily(metric) / blocks;
+}
+
+// Did the day record any of this metric? (Used for per-view empty lines.)
+export function hasMetricToday(date, metric) {
+  return metricCurve(date, metric).some(c => Math.abs(c.load) > 1e-9);
+}
+
+// Daily series of one metric for the last n days (today included), with data flag.
+export function dailyMetricSeries(n, metric) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const date = formatDate(addDays(today(), -i));
+    out.push({ date, has: hasAnyEntries(date), load: dailyMetric(date, metric) });
+  }
+  return out;
+}
+
+// Top contributors to one metric over the last n days, sorted by magnitude.
+export function topActivitiesByMetric(n, metric) {
+  const totals = {};
+  for (let i = 0; i < n; i++) {
+    const date = formatDate(addDays(today(), -i));
+    for (const b of dayBlocks()) {
+      for (const e of blockEntries(date, b.index)) {
+        const ex = findActivity(e.activityId);
+        if (!ex) continue;
+        const unit = metricWeights(ex.category, ex.stimulationScore)[metric];
+        if (!unit) continue;
+        const frac = (num(e.durationMinutes, 0) / b.minutes) * num(e.intensity, 1);
+        totals[ex.id] = totals[ex.id] || { name: ex.name, load: 0, minutes: 0 };
+        totals[ex.id].load += unit * frac;
+        totals[ex.id].minutes += num(e.durationMinutes, 0);
+      }
+    }
+  }
+  return Object.values(totals).filter(t => Math.abs(t.load) > 1e-9).sort((a, b) => Math.abs(b.load) - Math.abs(a.load));
+}
+
 // ---- stats helpers --------------------------------------------------------
 
 // Daily load series for the last n days (today included), with data flag.

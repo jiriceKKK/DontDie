@@ -7,18 +7,25 @@
 //   -1..-3 low-stim / recovery / calming
 // ============================================================
 
-// Ordered categories with display labels and an accent var for chips.
+// Ordered categories with display labels, an accent var for chips, and which
+// dashboard metric they feed. `metric` is the single source of truth for the
+// Cheap-Stim vs Productive separation (see metricWeights() in store.js):
+//   cheap      → counts toward Cheap Stim Load (fast / compulsive stimulation)
+//   productive → counts toward Productive Activation (useful effort)
+//   recovery   → counts as recovery effect (calming; pulls the day down)
+//   neutral    → counts toward neither
 export const CATEGORIES = [
-  { id: 'high_stim',       label: 'High stim',       color: 'var(--danger)' },
-  { id: 'medium_stim',     label: 'Medium stim',     color: 'var(--warning)' },
-  { id: 'productive_stim', label: 'Productive stim', color: 'var(--blue)' },
-  { id: 'low_stim',        label: 'Low stim',        color: 'var(--text-secondary)' },
-  { id: 'recovery',        label: 'Recovery',        color: 'var(--accent)' },
+  { id: 'high_stim',       label: 'High stim',       color: 'var(--danger)',         metric: 'cheap',      note: 'counts toward Cheap Stim' },
+  { id: 'medium_stim',     label: 'Medium stim',     color: 'var(--warning)',        metric: 'cheap',      note: 'counts toward Cheap Stim' },
+  { id: 'productive_stim', label: 'Productive stim', color: 'var(--stim-productive)', metric: 'productive', note: 'counts toward Productive' },
+  { id: 'low_stim',        label: 'Low stim',        color: 'var(--text-secondary)', metric: 'neutral',    note: 'neutral' },
+  { id: 'recovery',        label: 'Recovery',        color: 'var(--accent)',         metric: 'recovery',   note: 'recovery · lowers nothing on its own, shown as recovery effect' },
 ];
 
 export const CATEGORY_IDS = CATEGORIES.map(c => c.id);
 export function categoryLabel(id) { const c = CATEGORIES.find(x => x.id === id); return c ? c.label : id; }
 export function categoryColor(id) { const c = CATEGORIES.find(x => x.id === id); return c ? c.color : 'var(--text-muted)'; }
+export function categoryMetric(id) { const c = CATEGORIES.find(x => x.id === id); return c ? c.metric : 'cheap'; }
 
 export const DEFAULT_SETTINGS = {
   dayStartHour: 7,
@@ -44,11 +51,13 @@ export const DEFAULT_ACTIVITIES = [
   a('youtube',       'YouTube (normal)',   'medium_stim', 3, 30, ['video']),
   a('chatting',      'Chatting / messaging','medium_stim', 2, 20, ['social']),
   a('tv',            'TV / streaming',     'medium_stim', 3, 45, ['video']),
-  // Productive stim
-  a('gym',           'Gym',                'productive_stim', 2, 60, ['exercise']),
-  a('study',         'Focused study',      'productive_stim', 1, 45, ['school', 'focus']),
-  a('coding',        'Coding',             'productive_stim', 2, 60, ['work', 'focus']),
-  a('schoolwork',    'School work',        'productive_stim', 1, 45, ['school']),
+  // Productive stim (counts toward Productive Activation, never Cheap Stim)
+  a('gym',           'Gym',                'productive_stim', 3, 60, ['exercise']),
+  a('oah',           'OAH / handstand',    'productive_stim', 3, 30, ['exercise', 'skill']),
+  a('study',         'Focused study',      'productive_stim', 3, 45, ['school', 'focus']),
+  a('coding',        'Coding',             'productive_stim', 3, 60, ['work', 'focus']),
+  a('schoolwork',    'School work',        'productive_stim', 2, 45, ['school']),
+  a('active_learn',  'Active learning',    'productive_stim', 3, 30, ['focus', 'learn']),
   // Low stim
   a('cleaning',      'Cleaning',           'low_stim', -1, 20, ['chores']),
   a('basic_tasks',   'Basic tasks',        'low_stim', 0, 20, ['chores']),

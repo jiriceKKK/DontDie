@@ -31,7 +31,7 @@ export function renderStimActivities() {
       const items = all.filter(a => a.category === cat.id);
       if (!items.length) return '';
       return `
-        <div class="section-title" style="color:${cat.color}">${cat.label}</div>
+        <div class="section-title" style="color:${cat.color}">${cat.label}<span class="stim-cat-note">${cat.note}</span></div>
         <div class="stim-act-list">
           ${items.map(a => `
             <button class="stim-act-row ${a.active === false ? 'inactive' : ''}" data-edit="${a.id}">

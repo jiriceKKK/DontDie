@@ -2499,11 +2499,18 @@ body[data-mode="stimulation"] {
   --accent: #f0c020;
   --accent-dim: #d9a916;
   --accent-muted: #332a0d;
+  --stim-productive: #46d39a;       /* green: productive activation, distinct from amber cheap-stim */
 }
 .mode-dot[data-mode-dot="stimulation"] { background: #f0c020; }
 
 /* Subtle fade applied to the content area on a mode switch. */
 @keyframes mode-fade { from { opacity: 0.4; } to { opacity: 1; } }
+
+/* Dashboard view toggle (Cheap Stim · Productive) */
+.stim-seg { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-btn); }
+.stim-seg-btn { flex: 1; min-height: 40px; border-radius: calc(var(--radius-btn) - 4px); background: transparent; border: none; color: var(--text-secondary); font-size: 13px; font-weight: 500; transition: background 0.15s ease, color 0.15s ease; }
+.stim-seg-btn.active { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.25); }
+.stim-seg-btn:active { color: var(--text-primary); }
 
 /* Dashboard chart */
 .stim-chart-card { padding: 12px 12px 8px; }
@@ -2511,6 +2518,15 @@ body[data-mode="stimulation"] {
 .stim-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
 .stim-key-curve { border-top-color: var(--accent); }
 .stim-key-base { border-top-color: var(--text-muted); border-top-style: dashed; }
+
+/* Secondary context cards under the main stat grid */
+.stim-sub-grid { display: flex; gap: 10px; margin-bottom: 16px; }
+.stim-sub { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-chip); padding: 10px 12px; }
+.stim-sub-label { font-size: 11px; color: var(--text-muted); }
+.stim-sub-num { font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--text-secondary); }
+
+/* Activities: tiny note next to a category title */
+.stim-cat-note { font-size: 10px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-muted); margin-left: 8px; }
 
 .stim-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .stim-stat { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 12px 14px; }

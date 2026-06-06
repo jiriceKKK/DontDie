@@ -20,12 +20,31 @@ mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
 
 A behaviour-based **estimate** of how stimulated you are across the day — *not*
 a biological/medical measurement. You log activities into time blocks; each
-activity has a `stimulationScore` (+6 very high … -3 recovery). Block load =
-`Σ(score × durationMinutes / blockMinutes)`, daily load = sum of blocks, and the
-**baseline** is your recent average daily load (default last 7 days). The
-Dashboard plots today's per-block curve against that baseline; Stats shows daily
-load, top activities, high-stim vs recovery, and a factual mood crossover if
-Mental Health data exists.
+activity has a `stimulationScore` and a category. The category decides which
+metric the score feeds, so the model keeps **cheap stimulation** and
+**productive activation** as two separate numbers instead of one mixed score:
+
+| Category | Feeds | Examples |
+|---|---|---|
+| `high_stim` / `medium_stim` | **Cheap Stim** (`+score`) | Instagram, TikTok, porn, gaming, binge YouTube |
+| `productive_stim` | **Productive Activation** (`+score`) | Gym, OAH/handstand, focused study, coding, school work |
+| `recovery` | **Recovery effect** (`score`, negative) | Reading, walk no-phone, journaling, nap |
+| `low_stim` | neutral | Cleaning, calm commute, eating no-phone |
+
+Per metric: block value = `Σ(score × durationMinutes / blockMinutes)` over the
+activities in that block, daily value = sum of blocks, and each **baseline** is
+your recent average daily value (default last 7 days). Because productive
+activity never feeds cheap stim, **gym/OAH/study/coding never raise your Cheap
+Stim Load or Cheap Stim Baseline** — they raise Productive Activation instead.
+
+The **Dashboard** has a `Cheap Stim · Productive` toggle (segmented control,
+session-remembered). It swaps which metric is the main chart — cheap = amber
+curve, productive = green curve — each plotted against *its own* baseline on a
+shared Y scale, so a small day always reads below a larger baseline. The other
+metrics stay visible as smaller context cards (Productive Activation / Cheap
+Stim Load / Recovery Effect). Stats shows cheap-stim and productive trends
+separately, top activities per metric, and a factual mood crossover if Mental
+Health data exists.
 
 **Importing activities from text** (Activities → *Import from text*) — one per line:
 
