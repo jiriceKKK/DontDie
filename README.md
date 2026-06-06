@@ -10,10 +10,34 @@ A multi-mode health tracker. A **mode switcher** (top-left) flips the whole app
 — its pages, bottom nav, and accent theme — between modes:
 
 - **Physical Health** (green) — Today · Week · Stats · Split · Settings
-- **Mental Health** (calm blue) — Check-in · Tasks · Journal · Tools · Stats
+- **Mental Health** (calm blue) — Check-in · Tasks · Journal · Stats
+- **Stimulation** (amber) — Dashboard · Log · Activities · Stats · Settings
 
 Each mode has its own ordered tabs and mobile swipe navigation. Adding a future
 mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
+
+### Stimulation mode
+
+A behaviour-based **estimate** of how stimulated you are across the day — *not*
+a biological/medical measurement. You log activities into time blocks; each
+activity has a `stimulationScore` (+6 very high … -3 recovery). Block load =
+`Σ(score × durationMinutes / blockMinutes)`, daily load = sum of blocks, and the
+**baseline** is your recent average daily load (default last 7 days). The
+Dashboard plots today's per-block curve against that baseline; Stats shows daily
+load, top activities, high-stim vs recovery, and a factual mood crossover if
+Mental Health data exists.
+
+**Importing activities from text** (Activities → *Import from text*) — one per line:
+
+```
+name | category | score | minutes | tags
+Instagram | high_stim | 5 | 15 | scrolling,social
+Reading | recovery | -2 | 30 | calm
+```
+
+Categories: `high_stim · medium_stim · productive_stim · low_stim · recovery`.
+A JSON array of the same fields also works. Invalid lines are reported in a
+preview and skipped; duplicates (by name) are skipped on import.
 
 ### Physical Health
 
@@ -28,8 +52,7 @@ mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
 - **Check-in** — one entry per day: mood (emoji + score) plus 1–5 scales for stress, tension, energy, sleep and social, with quick tags and a one-line note
 - **Tasks** — temporary, date-based to-dos (Today / Tomorrow), pending/done — not habits
 - **Journal** — guided templates (quick reflection, CBT thought record, stress dump, trigger log, what helped / what made it worse, tomorrow reset)
-- **Tools** — breathing timer, 5-4-3-2-1 grounding, quick reset, "what can I control?", decompress
-- **Stats** — factual patterns only: mood/stress/energy trends, sleep vs mood, top tags, task completion, best/worst weekday, recent-change summary
+- **Stats** — factual patterns only: mood/stress/energy trends, a per-day task-completion chart, tasks-vs-mood, sleep vs mood, top tags, best/worst weekday, recent-change summary
 
 Mental Health is data-based and non-clinical — no diagnoses, no advice, no filler.
 
@@ -90,20 +113,30 @@ CREATE TABLE mh_store (
   CONSTRAINT mh_store_singleton CHECK (id = 1)
 );
 
+-- Stimulation data: activity library + per-day block logs (single JSON document)
+CREATE TABLE stimulation_store (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT stimulation_store_singleton CHECK (id = 1)
+);
+
 ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stimulation_store ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON split_config FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON stimulation_store FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
-> The `split_config` and `mh_store` tables are optional. Without them those
-> features still work fully from `localStorage` — they just won't sync across
-> devices until the tables exist.
+> The `split_config`, `mh_store` and `stimulation_store` tables are optional.
+> Without them those features still work fully from `localStorage` — they just
+> won't sync across devices until the tables exist.
 
 ### 4 — Fill in `js/config.js`
 
@@ -186,7 +219,11 @@ js/
   mental/
     store.js        — Mental Health data: load/seed/save + CRUD + stats helpers
     journalTemplates.js — guided journal template definitions
-    tabs/           — checkin · tasks · journal · tools · stats
+    tabs/           — checkin · tasks · journal · stats
+  stimulation/
+    store.js        — Stimulation data: load/seed/save + CRUD + load/baseline calc + parser
+    defaultActivities.js — seed activity library + categories + default settings
+    tabs/           — dashboard · log · activities · stats · settings
   utils/
     date.js         — formatDate, parseDate, today, addDays, getMondayOfWeek, …
   ui/

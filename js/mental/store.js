@@ -176,6 +176,34 @@ export function taskCompletion(n) {
   return { done, total };
 }
 
+// Per-day task counts over the last n days: [{ date, done, total }] oldest→newest.
+export function tasksByDay(n) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const dateStr = formatDate(addDays(today(), -i));
+    const dayTasks = state.mental.tasks.filter(t => t.date === dateStr);
+    out.push({ date: dateStr, done: dayTasks.filter(t => t.done).length, total: dayTasks.length });
+  }
+  return out;
+}
+
+// Average mood on days where every task was completed vs days with unfinished
+// tasks (only days that have a check-in AND at least one task).
+export function taskMoodSplit(n) {
+  let doneSum = 0, doneCount = 0, unfSum = 0, unfCount = 0;
+  for (const c of recentCheckins(n)) {
+    if (!c.has || typeof c.mood !== 'number') continue;
+    const dayTasks = state.mental.tasks.filter(t => t.date === c.date);
+    if (dayTasks.length === 0) continue;
+    if (dayTasks.every(t => t.done)) { doneSum += c.mood; doneCount++; }
+    else { unfSum += c.mood; unfCount++; }
+  }
+  return {
+    doneAvg: doneCount ? doneSum / doneCount : null, doneCount,
+    unfAvg: unfCount ? unfSum / unfCount : null, unfCount,
+  };
+}
+
 // Average mood per weekday over last n days → best/worst.
 export function weekdayMood(n) {
   const sums = Array.from({ length: 7 }, () => ({ sum: 0, count: 0 }));

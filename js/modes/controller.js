@@ -78,6 +78,11 @@ export function setMode(modeId) {
   const remembered = state.modeLastTab[mode.id];
   const target = mode.tabs.some(t => t.id === remembered) ? remembered : mode.tabs[0].id;
   switchTab(target, false);
+
+  // Subtle fade so a mode switch reads as a context change, not a hard reload.
+  // (No sideways swipe — that's reserved for moving between pages in a mode.)
+  const main = document.getElementById('main-content');
+  if (main) { main.style.animation = 'none'; void main.offsetWidth; main.style.animation = 'mode-fade 0.2s ease'; }
 }
 
 function navButton(tab, position) {

@@ -215,6 +215,38 @@ export async function dbSaveMentalStore(mhData) {
   }
 }
 
+// ---- stimulation data (single-row JSON document) --------------------------
+export async function dbGetStimulationStore() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('stimulation_store')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getStimulationStore:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveStimulationStore(stimData) {
+  try {
+    const { error } = await getSupabase()
+      .from('stimulation_store')
+      .upsert(
+        { id: 1, data: stimData, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveStimulationStore:', err);
+    return { error: err };
+  }
+}
+
 export async function dbExportAll() {
   try {
     const [logsRes, habitsRes] = await Promise.all([

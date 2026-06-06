@@ -15,12 +15,18 @@ import { renderStats } from '../tabs/stats.js';
 import { renderSplit } from '../tabs/split.js';
 import { renderSettings } from '../tabs/settings.js';
 
-// Mental Health (new)
+// Mental Health
 import { renderCheckin } from '../mental/tabs/checkin.js';
 import { renderTasks } from '../mental/tabs/tasks.js';
 import { renderJournal } from '../mental/tabs/journal.js';
-import { renderTools } from '../mental/tabs/tools.js';
 import { renderMentalStats } from '../mental/tabs/stats.js';
+
+// Stimulation
+import { renderStimDashboard } from '../stimulation/tabs/dashboard.js';
+import { renderStimLog } from '../stimulation/tabs/log.js';
+import { renderStimActivities } from '../stimulation/tabs/activities.js';
+import { renderStimStats } from '../stimulation/tabs/stats.js';
+import { renderStimSettings } from '../stimulation/tabs/settings.js';
 
 // Icon inner-SVG (wrapped in <svg class="nav-icon"> by the nav builder).
 const ICON = {
@@ -33,6 +39,9 @@ const ICON = {
   tasks:    '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   journal:  '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   tools:    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  edit:     '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+  list:     '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
 };
 
 export const MODES = [
@@ -54,8 +63,18 @@ export const MODES = [
       { id: 'checkin',  label: 'Check-in', icon: ICON.checkin,  render: renderCheckin },
       { id: 'tasks',    label: 'Tasks',    icon: ICON.tasks,    render: renderTasks },
       { id: 'journal',  label: 'Journal',  icon: ICON.journal,  render: renderJournal },
-      { id: 'tools',    label: 'Tools',    icon: ICON.tools,    render: renderTools },
       { id: 'stats',    label: 'Stats',    icon: ICON.bars,     render: renderMentalStats },
+    ],
+  },
+  {
+    id: 'stimulation',
+    label: 'Stimulation',
+    tabs: [
+      { id: 'dashboard',  label: 'Dashboard',  icon: ICON.activity, render: renderStimDashboard },
+      { id: 'log',        label: 'Log',        icon: ICON.edit,     render: renderStimLog },
+      { id: 'activities', label: 'Activities', icon: ICON.list,     render: renderStimActivities },
+      { id: 'stats',      label: 'Stats',      icon: ICON.bars,     render: renderStimStats },
+      { id: 'settings',   label: 'Settings',   icon: ICON.settings, render: renderStimSettings },
     ],
   },
 ];

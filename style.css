@@ -2491,3 +2491,75 @@ body[data-mode="mental"] {
 /* Mental stats */
 .mh-summary-card { font-size: 15px; color: var(--text-primary); line-height: 1.5; margin-bottom: 16px; }
 .mh-stat-line { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+
+/* ============================================================
+   STIMULATION MODE — amber/yellow accent theme + components
+   ============================================================ */
+body[data-mode="stimulation"] {
+  --accent: #f0c020;
+  --accent-dim: #d9a916;
+  --accent-muted: #332a0d;
+}
+.mode-dot[data-mode-dot="stimulation"] { background: #f0c020; }
+
+/* Subtle fade applied to the content area on a mode switch. */
+@keyframes mode-fade { from { opacity: 0.4; } to { opacity: 1; } }
+
+/* Dashboard chart */
+.stim-chart-card { padding: 12px 12px 8px; }
+.stim-legend { display: flex; gap: 16px; justify-content: center; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.stim-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+.stim-key-curve { border-top-color: var(--accent); }
+.stim-key-base { border-top-color: var(--text-muted); border-top-style: dashed; }
+
+.stim-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stim-stat { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 12px 14px; }
+.stim-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-family: var(--font-mono); }
+.stim-stat-num { font-family: var(--font-mono); font-size: 24px; font-weight: 500; color: var(--text-primary); margin-top: 2px; }
+.stim-stat-sub { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* Log stepper */
+.stim-stepper { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.stim-step-btn { width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-btn); background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 22px; line-height: 1; }
+.stim-step-btn:disabled { opacity: 0.35; }
+.stim-step-mid { flex: 1; text-align: center; }
+.stim-step-block { font-family: var(--font-mono); font-size: 16px; font-weight: 500; color: var(--text-primary); }
+.stim-step-count { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+.stim-block-entries { margin-bottom: 14px; }
+.stim-entry-list { display: flex; flex-direction: column; gap: 10px; }
+.stim-entry { background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-chip); padding: 10px 12px; }
+.stim-entry-top { display: flex; align-items: center; gap: 8px; }
+.stim-entry-name { flex: 1; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.stim-entry-dur { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.stim-entry-rm { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); border-radius: 6px; }
+.stim-entry-rm:active { color: var(--danger); background: rgba(248,113,113,0.12); }
+.stim-dur-row { display: flex; gap: 6px; margin-top: 8px; }
+.stim-dur { flex: 1; min-height: 32px; border-radius: var(--radius-btn); background: var(--bg-card); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; }
+.stim-dur.active { background: var(--accent-muted); border-color: var(--accent); color: var(--accent); }
+
+/* Log activity chips */
+.stim-cat-block { margin-bottom: 14px; }
+.stim-cat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); margin-bottom: 8px; }
+.stim-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.stim-chip { font-size: 13px; padding: 8px 14px; border-radius: var(--radius-pill); background: var(--bg-card); border: 1px solid var(--border-subtle); color: var(--text-primary); min-height: 40px; }
+.stim-chip:active { background: var(--bg-elevated); }
+
+/* Activities page */
+.stim-act-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+.stim-act-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.stim-act-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-chip); padding: 12px 14px; text-align: left; }
+.stim-act-row:active { background: var(--bg-elevated); }
+.stim-act-row.inactive { opacity: 0.5; }
+.stim-act-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.stim-act-meta { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+
+/* Import preview */
+.stim-import-summary { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 12px 0 6px; }
+.stim-import-ok { font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); padding: 2px 0; }
+.stim-import-err { font-size: 12px; color: var(--danger); font-family: var(--font-mono); padding: 2px 0; }
+
+/* Stats toplist */
+.stim-toplist { display: flex; flex-direction: column; }
+.stim-toprow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+.stim-toprow:last-child { border-bottom: none; }
