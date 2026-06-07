@@ -352,6 +352,31 @@ function blockMetrics(date, idx) {
   return out;
 }
 
+// Per-activity contributions for one block — same duration-weighted calc the
+// chart uses, so the dashboard's segment popup never invents numbers. Returns
+// [{ name, category, minutes, cheap, productive, recovery }] (one per entry).
+export function blockDrivers(date, idx) {
+  const block = dayBlocks().find(b => b.index === idx);
+  const len = block ? block.minutes : state.stimulation.settings.blockMinutes;
+  const out = [];
+  if (!len) return out;
+  for (const e of blockEntries(date, idx)) {
+    const ex = findActivity(e.activityId);
+    if (!ex) continue;
+    const w = metricWeights(ex.category, ex.stimulationScore);
+    const frac = (num(e.durationMinutes, 0) / len) * num(e.intensity, 1);
+    out.push({
+      name: ex.name,
+      category: ex.category,
+      minutes: num(e.durationMinutes, 0),
+      cheap: w.cheap * frac,
+      productive: w.productive * frac,
+      recovery: w.recovery * frac,
+    });
+  }
+  return out;
+}
+
 // One metric for one block. metric ∈ 'cheap' | 'productive' | 'recovery'.
 export function blockMetric(date, idx, metric) {
   return num(blockMetrics(date, idx)[metric], 0);

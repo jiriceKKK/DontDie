@@ -3,11 +3,20 @@ import { switchTab } from '../../navigation.js';
 import { state } from '../../state.js';
 import {
   metricCurve, baselineMetricPerBlock, baselineMetricDaily,
-  dailyMetric, hasAnyEntries, metricTarget, targetStatus,
+  dailyMetric, hasAnyEntries, metricTarget, targetStatus, blockDrivers,
 } from '../store.js';
 
 const r1 = n => Math.round(n * 10) / 10;
 const rng = t => `${r1(t.lo)}–${r1(t.hi)}`;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const signed = n => (n >= 0 ? '+' : '') + r1(n);
+
+// Selected chart segment (index of the segment between curve[i] and curve[i+1]).
+// Module-scoped session state: reset on every full dashboard re-render (view
+// toggle, navigation, data/date change) and never persisted. `_ctx` carries the
+// data the detail card needs so a tap doesn't rebuild the whole chart.
+let _selectedSeg = null;
+let _ctx = null;
 
 // Two dashboard views. The toggle swaps which metric is the main chart; the
 // other numbers still show as small context cards. Cheap = amber, Productive
@@ -69,13 +78,103 @@ function chartSvg(curve, basePerBlock, color, band) {
       <line x1="${padL}" y1="${yHi}" x2="${W - padR}" y2="${yHi}" stroke="${color}" stroke-width="1" opacity="0.3"/>`;
   }
 
+  // Invisible fat hitboxes over each line segment (between consecutive points),
+  // drawn LAST so they sit on top. pointer-events:stroke (set in CSS) means only
+  // the ~26-unit-wide transparent stroke is tappable — easy on mobile without
+  // thickening the visible 2.5-wide line. data-seg = index of the start point.
+  let hits = '';
+  for (let i = 0; i < curve.length - 1; i++) {
+    hits += `<line class="stim-seg-hit" data-seg="${i}" x1="${x(i)}" y1="${y(curve[i].load)}" x2="${x(i + 1)}" y2="${y(curve[i + 1].load)}" stroke="transparent" stroke-width="26" stroke-linecap="round"/>`;
+  }
+
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
     ${bandSvg}
     <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--border-subtle)" stroke-width="1"/>
     <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>
     <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}${labels}
+    ${hits}
   </svg>`;
+}
+
+// Drivers for one block, filtered/sorted for the active metric: metric-positive
+// activities first, then any recovery activities as context.
+function driversHtml(date, idx, metric) {
+  const ds = blockDrivers(date, idx);
+  const main = ds.filter(d => d[metric] > 1e-9).sort((a, b) => b[metric] - a[metric]);
+  const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery);
+  const noun = metric === 'cheap' ? 'cheap-stim' : 'productive';
+
+  if (!main.length && !rec.length) {
+    return `<div class="stim-seg-none">No ${noun} drivers</div>`;
+  }
+  const row = (name, mins, val, tag) =>
+    `<div class="stim-seg-driver"><span class="stim-seg-dn">${esc(name)}</span><span class="stim-seg-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
+  return main.map(d => row(d.name, d.minutes, d[metric], '')).join('')
+    + rec.map(d => row(d.name, d.minutes, d.recovery, 'recovery')).join('');
+}
+
+// Detail card for the selected segment. Renders into #stim-seg-detail only, so a
+// tap never rebuilds the chart (keeps scroll + selection stable).
+function renderDetail() {
+  const host = document.getElementById('stim-seg-detail');
+  if (!host) return;
+  if (_selectedSeg === null || !_ctx) {
+    host.innerHTML = `<div class="stim-seg-hint">Tap a line segment to see what drove the change.</div>`;
+    return;
+  }
+  const { curve, metric, metricName, color, date } = _ctx;
+  const A = curve[_selectedSeg], B = curve[_selectedSeg + 1];
+  if (!A || !B) { host.innerHTML = ''; _selectedSeg = null; return; }
+
+  const delta = B.load - A.load;
+  const flat = Math.abs(delta) < 0.05;
+  const label = flat ? 'Stable' : delta > 0 ? 'Increase' : 'Drop';
+  const arrow = flat ? '→' : delta > 0 ? '↑' : '↓';
+  const tagClass = flat ? 'stable' : delta > 0 ? 'increase' : 'drop';
+
+  host.innerHTML = `
+    <div class="stim-seg-card">
+      <div class="stim-seg-head">
+        <span class="stim-seg-range">${esc(A.label)} → ${esc(B.label)}</span>
+        <button class="stim-seg-close" id="stim-seg-close" aria-label="Close">✕</button>
+      </div>
+      <div class="stim-seg-metric">
+        <span style="color:${color}">${metricName} ${signed(delta)}</span>
+        <span class="stim-seg-tag ${tagClass}">${arrow} ${label}</span>
+        <span class="stim-seg-vals">${r1(A.load)} → ${r1(B.load)}</span>
+      </div>
+      <div class="stim-seg-block">
+        <div class="stim-seg-bl">${esc(A.label)}</div>
+        ${driversHtml(date, A.index, metric)}
+      </div>
+      <div class="stim-seg-block">
+        <div class="stim-seg-bl">${esc(B.label)}</div>
+        ${driversHtml(date, B.index, metric)}
+      </div>
+    </div>`;
+}
+
+function selectSegment(i) {
+  _selectedSeg = i;
+  renderDetail();
+}
+
+// Delegated tap handling, bound once per panel element (survives innerHTML
+// rewrites; re-binds if the mode controller rebuilds the panel). Handles:
+// segment tap → select, ✕ → close, tap outside the chart/detail → close.
+function bindSegmentTaps(panel) {
+  if (panel.dataset.stimSegBound) return;
+  panel.dataset.stimSegBound = '1';
+  panel.addEventListener('click', (e) => {
+    const hit = e.target.closest('[data-seg]');
+    if (hit) { selectSegment(parseInt(hit.dataset.seg, 10)); return; }
+    if (e.target.closest('#stim-seg-close')) { _selectedSeg = null; renderDetail(); return; }
+    // Tap anywhere that isn't the chart or the detail card closes the popup.
+    if (_selectedSeg !== null && !e.target.closest('#stim-seg-detail') && !e.target.closest('.stim-chart-card')) {
+      _selectedSeg = null; renderDetail();
+    }
+  });
 }
 
 // Which third of the day carries the most of this metric.
@@ -113,6 +212,12 @@ export function renderStimDashboard() {
   const header = `<div class="mh-header"><div class="mh-title">Dashboard</div><div class="mh-subtitle">Estimated from logged activities · not a medical measurement</div></div>`;
   const seg = segmentedControl(view);
 
+  // A full re-render resets the chart-segment selection (view/data/date change).
+  _selectedSeg = null;
+  _ctx = null;
+
+  bindSegmentTaps(panel);
+
   const attach = () => {
     panel.querySelectorAll('.stim-seg-btn').forEach(b => b.addEventListener('click', () => {
       const v = b.dataset.view;
@@ -120,6 +225,7 @@ export function renderStimDashboard() {
     }));
     const lb = panel.querySelector('#stim-log-btn');
     if (lb) lb.addEventListener('click', () => switchTab('log'));
+    renderDetail();
   };
 
   // No activity at all today → one shared empty card (toggle still works).
@@ -134,6 +240,8 @@ export function renderStimDashboard() {
   }
 
   const curve = metricCurve(date, cfg.metric);
+  // Data the segment popup needs (so a tap doesn't recompute the chart).
+  _ctx = { date, metric: cfg.metric, metricName: cfg.loadLabel, color: cfg.color, curve };
   const blocks = curve.length || 1;
   const basePerBlock = baselineMetricPerBlock(cfg.metric);
   const todayLoad = dailyMetric(date, cfg.metric);
@@ -187,6 +295,8 @@ export function renderStimDashboard() {
         <span><span class="stim-key-band" style="background:${cfg.color}"></span>Target</span>
       </div>
     </div>
+
+    <div id="stim-seg-detail"></div>
 
     <div class="stim-stat-grid">
       <div class="stim-stat"><div class="stim-stat-label">${cfg.loadLabel}</div><div class="stim-stat-num">${r1(todayLoad)}</div></div>
