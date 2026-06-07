@@ -2519,25 +2519,38 @@ body[data-mode="stimulation"] {
 .stim-chart-card svg [data-seg] { pointer-events: stroke; cursor: pointer; }
 .stim-legend { display: flex; gap: 16px; justify-content: center; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
-/* Tapped-segment detail card (below the chart, never a modal) */
-.stim-seg-hint { font-size: 12px; color: var(--text-muted); text-align: center; margin: 2px 0 14px; }
-.stim-seg-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 16px; }
-.stim-seg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.stim-seg-range { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-primary); }
-.stim-seg-close { width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--text-muted); font-size: 14px; }
-.stim-seg-close:active { background: var(--bg-elevated); color: var(--text-primary); }
-.stim-seg-metric { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-family: var(--font-mono); font-size: 14px; font-weight: 500; }
-/* Direction is value-neutral on purpose: an increase is "bad" for Cheap Stim but
-   "good" for Productive, so we show an arrow + word, not a good/bad colour. */
-.stim-seg-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
-.stim-seg-tag.stable { color: var(--text-muted); }
-.stim-seg-vals { font-size: 12px; color: var(--text-muted); margin-left: auto; }
-.stim-seg-block { margin-top: 10px; }
-.stim-seg-bl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 4px; }
-.stim-seg-driver { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; }
-.stim-seg-dn { font-size: 13px; color: var(--text-primary); }
-.stim-seg-dv { font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); flex-shrink: 0; }
-.stim-seg-none { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
+/* Chart segment selection: the plot is the positioning context for the floating
+   tooltip; the highlight line brightens/thickens only the tapped segment. */
+.stim-chart-plot { position: relative; }
+.stim-seg-hl { pointer-events: none; transition: opacity 0.12s ease; }
+
+/* Floating segment tooltip — small, overlaps the chart, never a full-width card.
+   Direction word is value-neutral (an increase is "bad" for Cheap Stim but
+   "good" for Productive), so it's an arrow + word, not a good/bad colour. */
+.stim-seg-pop {
+  position: absolute; z-index: 6; width: max-content; max-width: 190px;
+  background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+  border-radius: 10px; padding: 9px 11px 8px; box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+  pointer-events: auto;
+}
+.stim-seg-pop[data-place="above"] { transform: translate(-50%, calc(-100% - 11px)); }
+.stim-seg-pop[data-place="below"] { transform: translate(-50%, 11px); }
+.stim-seg-pop::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent;
+}
+.stim-seg-pop[data-place="above"]::after { top: 100%; border-top-color: var(--border-subtle); }
+.stim-seg-pop[data-place="below"]::after { bottom: 100%; border-bottom-color: var(--border-subtle); }
+.stim-pop-close { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; border-radius: 5px; }
+.stim-pop-close:active { background: var(--bg-card); color: var(--text-primary); }
+.stim-pop-range { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--text-primary); padding-right: 16px; }
+.stim-pop-metric { font-family: var(--font-mono); font-size: 13px; font-weight: 500; margin-top: 2px; }
+.stim-pop-dir { color: var(--text-muted); font-weight: 400; font-size: 11px; }
+.stim-pop-change { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin: 2px 0 5px; }
+.stim-pop-driver { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; }
+.stim-pop-dn { font-size: 12px; color: var(--text-primary); }
+.stim-pop-dv { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); white-space: nowrap; }
+.stim-pop-none { font-size: 11px; color: var(--text-muted); }
 .stim-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
 .stim-key-curve { border-top-color: var(--accent); }
 .stim-key-base { border-top-color: var(--text-muted); border-top-style: dashed; }

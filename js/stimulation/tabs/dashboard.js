@@ -26,6 +26,7 @@ const VIEWS = {
     metric: 'cheap',
     color: 'var(--accent)',
     loadLabel: 'Cheap Stim Load',
+    shortName: 'Cheap Stim',
     baseLabel: 'Cheap Stim Baseline',
     legendToday: 'Cheap stim',
     emptyLine: 'No cheap-stim activity logged today.',
@@ -37,6 +38,7 @@ const VIEWS = {
     metric: 'productive',
     color: 'var(--stim-productive)',
     loadLabel: 'Productive Activation',
+    shortName: 'Productive',
     baseLabel: 'Productive Average',
     legendToday: 'Productive',
     emptyLine: 'No productive activity logged today yet.',
@@ -46,11 +48,13 @@ const VIEWS = {
   },
 };
 
+const CHART_W = 320, CHART_H = 168;
+
 // SVG: subtle target band + dashed baseline + today's per-block curve, all in
 // one Y domain (curve loads + baseline + band + 0) so a small today curve always
 // stays visually below a larger baseline/target. `band` is per-block {lo, hi}.
 function chartSvg(curve, basePerBlock, color, band) {
-  const W = 320, H = 168, padL = 8, padR = 8, padT = 14, padB = 22;
+  const W = CHART_W, H = CHART_H, padL = 8, padR = 8, padT = 14, padB = 22;
   const n = curve.length || 1;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const loads = curve.map(c => c.load);
@@ -87,92 +91,118 @@ function chartSvg(curve, basePerBlock, color, band) {
     hits += `<line class="stim-seg-hit" data-seg="${i}" x1="${x(i)}" y1="${y(curve[i].load)}" x2="${x(i + 1)}" y2="${y(curve[i + 1].load)}" stroke="transparent" stroke-width="26" stroke-linecap="round"/>`;
   }
 
+  // Highlight overlay for the selected segment (coords/colour set by showPopup).
+  // Hidden until a segment is tapped; pointer-events:none so it never blocks taps.
+  const highlight = `<line id="stim-seg-hl" class="stim-seg-hl" x1="0" y1="0" x2="0" y2="0" stroke="transparent" stroke-width="0" stroke-linecap="round" style="opacity:0"/>`;
+
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
     ${bandSvg}
     <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--border-subtle)" stroke-width="1"/>
     <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>
     <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${highlight}
     ${dots}${labels}
     ${hits}
   </svg>`;
 }
 
-// Drivers for one block, filtered/sorted for the active metric: metric-positive
-// activities first, then any recovery activities as context.
-function driversHtml(date, idx, metric) {
+// Compact driver lines for ONE block (the clicked segment's END block only —
+// this is the fix for the old card that listed two blocks). Metric-positive
+// activities first (top 3), then up to 2 recovery items as context.
+function driversCompact(date, idx, metric) {
   const ds = blockDrivers(date, idx);
-  const main = ds.filter(d => d[metric] > 1e-9).sort((a, b) => b[metric] - a[metric]);
-  const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery);
+  const main = ds.filter(d => d[metric] > 1e-9).sort((a, b) => b[metric] - a[metric]).slice(0, 3);
+  const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 2);
   const noun = metric === 'cheap' ? 'cheap-stim' : 'productive';
-
-  if (!main.length && !rec.length) {
-    return `<div class="stim-seg-none">No ${noun} drivers</div>`;
-  }
+  if (!main.length && !rec.length) return `<div class="stim-pop-none">No ${noun} drivers</div>`;
   const row = (name, mins, val, tag) =>
-    `<div class="stim-seg-driver"><span class="stim-seg-dn">${esc(name)}</span><span class="stim-seg-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
+    `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
   return main.map(d => row(d.name, d.minutes, d[metric], '')).join('')
-    + rec.map(d => row(d.name, d.minutes, d.recovery, 'recovery')).join('');
+    + rec.map(d => row(d.name, d.minutes, d.recovery, 'rec')).join('');
 }
 
-// Detail card for the selected segment. Renders into #stim-seg-detail only, so a
-// tap never rebuilds the chart (keeps scroll + selection stable).
-function renderDetail() {
-  const host = document.getElementById('stim-seg-detail');
-  if (!host) return;
-  if (_selectedSeg === null || !_ctx) {
-    host.innerHTML = `<div class="stim-seg-hint">Tap a line segment to see what drove the change.</div>`;
-    return;
-  }
-  const { curve, metric, metricName, color, date } = _ctx;
-  const A = curve[_selectedSeg], B = curve[_selectedSeg + 1];
-  if (!A || !B) { host.innerHTML = ''; _selectedSeg = null; return; }
+function hidePopup() {
+  const pop = document.getElementById('stim-seg-pop');
+  if (pop) { pop.hidden = true; pop.innerHTML = ''; }
+  const hl = document.getElementById('stim-seg-hl');
+  if (hl) { hl.setAttribute('stroke-width', '0'); hl.style.opacity = '0'; hl.style.filter = 'none'; }
+}
+
+// Floating tooltip over the chart for segment N (point N → point N+1). It
+// describes ONLY this segment, labelled by its END block, positioned near the
+// segment's midpoint and clamped inside the plot. Reads the tapped hitbox's own
+// x1/y1/x2/y2 (viewBox coords) so no chart math is duplicated.
+function showPopup(hitEl) {
+  if (!_ctx) return;
+  const pop = document.getElementById('stim-seg-pop');
+  const hl = document.getElementById('stim-seg-hl');
+  if (!pop || !hl) return;
+
+  const i = parseInt(hitEl.dataset.seg, 10);
+  const { curve, metric, color, shortName, date } = _ctx;
+  const A = curve[i], B = curve[i + 1];
+  if (!A || !B) return;
+
+  const x1 = parseFloat(hitEl.getAttribute('x1')), y1 = parseFloat(hitEl.getAttribute('y1'));
+  const x2 = parseFloat(hitEl.getAttribute('x2')), y2 = parseFloat(hitEl.getAttribute('y2'));
+
+  // Highlight the exact tapped segment: brighter, thicker, glowing.
+  hl.setAttribute('x1', x1); hl.setAttribute('y1', y1);
+  hl.setAttribute('x2', x2); hl.setAttribute('y2', y2);
+  hl.setAttribute('stroke', color); hl.setAttribute('stroke-width', '5');
+  hl.style.opacity = '1'; hl.style.filter = `drop-shadow(0 0 3px ${color})`;
 
   const delta = B.load - A.load;
   const flat = Math.abs(delta) < 0.05;
-  const label = flat ? 'Stable' : delta > 0 ? 'Increase' : 'Drop';
+  const word = flat ? 'Stable' : delta > 0 ? 'Increase' : 'Drop';
   const arrow = flat ? '→' : delta > 0 ? '↑' : '↓';
-  const tagClass = flat ? 'stable' : delta > 0 ? 'increase' : 'drop';
 
-  host.innerHTML = `
-    <div class="stim-seg-card">
-      <div class="stim-seg-head">
-        <span class="stim-seg-range">${esc(A.label)} → ${esc(B.label)}</span>
-        <button class="stim-seg-close" id="stim-seg-close" aria-label="Close">✕</button>
-      </div>
-      <div class="stim-seg-metric">
-        <span style="color:${color}">${metricName} ${signed(delta)}</span>
-        <span class="stim-seg-tag ${tagClass}">${arrow} ${label}</span>
-        <span class="stim-seg-vals">${r1(A.load)} → ${r1(B.load)}</span>
-      </div>
-      <div class="stim-seg-block">
-        <div class="stim-seg-bl">${esc(A.label)}</div>
-        ${driversHtml(date, A.index, metric)}
-      </div>
-      <div class="stim-seg-block">
-        <div class="stim-seg-bl">${esc(B.label)}</div>
-        ${driversHtml(date, B.index, metric)}
-      </div>
-    </div>`;
+  pop.innerHTML = `
+    <button class="stim-pop-close" id="stim-seg-close" aria-label="Close">✕</button>
+    <div class="stim-pop-range">${esc(B.label)}</div>
+    <div class="stim-pop-metric" style="color:${color}">${shortName} ${signed(delta)} <span class="stim-pop-dir">${arrow} ${word}</span></div>
+    <div class="stim-pop-change">${r1(A.load)} → ${r1(B.load)}</div>
+    ${driversCompact(date, B.index, metric)}`;
+  pop.hidden = false;
+
+  // Position near the segment midpoint; clamp horizontally, flip below if the
+  // point sits high in the plot so the tooltip never leaves the top.
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  pop.style.marginLeft = '';
+  pop.style.left = Math.min(82, Math.max(18, (mx / CHART_W) * 100)) + '%';
+  pop.style.top = ((my / CHART_H) * 100) + '%';
+  pop.dataset.place = (my / CHART_H) < 0.42 ? 'below' : 'above';
+
+  // After layout, nudge horizontally so the tooltip never spills off-screen.
+  requestAnimationFrame(() => {
+    if (pop.hidden) return;
+    const m = 6, br = pop.getBoundingClientRect();
+    let shift = 0;
+    if (br.left < m) shift = m - br.left;
+    else if (br.right > window.innerWidth - m) shift = (window.innerWidth - m) - br.right;
+    if (shift) pop.style.marginLeft = shift + 'px';
+  });
 }
 
-function selectSegment(i) {
+function selectSegment(hitEl) {
+  const i = parseInt(hitEl.dataset.seg, 10);
+  if (_selectedSeg === i) { _selectedSeg = null; hidePopup(); return; } // tap same → close
   _selectedSeg = i;
-  renderDetail();
+  showPopup(hitEl);
 }
 
 // Delegated tap handling, bound once per panel element (survives innerHTML
 // rewrites; re-binds if the mode controller rebuilds the panel). Handles:
-// segment tap → select, ✕ → close, tap outside the chart/detail → close.
+// segment tap → select/toggle, ✕ → close, tap outside chart/popup → close.
 function bindSegmentTaps(panel) {
   if (panel.dataset.stimSegBound) return;
   panel.dataset.stimSegBound = '1';
   panel.addEventListener('click', (e) => {
     const hit = e.target.closest('[data-seg]');
-    if (hit) { selectSegment(parseInt(hit.dataset.seg, 10)); return; }
-    if (e.target.closest('#stim-seg-close')) { _selectedSeg = null; renderDetail(); return; }
-    // Tap anywhere that isn't the chart or the detail card closes the popup.
-    if (_selectedSeg !== null && !e.target.closest('#stim-seg-detail') && !e.target.closest('.stim-chart-card')) {
-      _selectedSeg = null; renderDetail();
+    if (hit) { selectSegment(hit); return; }
+    if (e.target.closest('#stim-seg-close')) { _selectedSeg = null; hidePopup(); return; }
+    if (_selectedSeg !== null && !e.target.closest('#stim-seg-pop') && !e.target.closest('.stim-chart-plot')) {
+      _selectedSeg = null; hidePopup();
     }
   });
 }
@@ -225,7 +255,6 @@ export function renderStimDashboard() {
     }));
     const lb = panel.querySelector('#stim-log-btn');
     if (lb) lb.addEventListener('click', () => switchTab('log'));
-    renderDetail();
   };
 
   // No activity at all today → one shared empty card (toggle still works).
@@ -241,7 +270,7 @@ export function renderStimDashboard() {
 
   const curve = metricCurve(date, cfg.metric);
   // Data the segment popup needs (so a tap doesn't recompute the chart).
-  _ctx = { date, metric: cfg.metric, metricName: cfg.loadLabel, color: cfg.color, curve };
+  _ctx = { date, metric: cfg.metric, shortName: cfg.shortName, color: cfg.color, curve };
   const blocks = curve.length || 1;
   const basePerBlock = baselineMetricPerBlock(cfg.metric);
   const todayLoad = dailyMetric(date, cfg.metric);
@@ -288,15 +317,16 @@ export function renderStimDashboard() {
 
   panel.innerHTML = header + seg + `
     <div class="card stim-chart-card">
-      ${chartSvg(curve, basePerBlock, cfg.color, bandPerBlock)}
+      <div class="stim-chart-plot">
+        ${chartSvg(curve, basePerBlock, cfg.color, bandPerBlock)}
+        <div id="stim-seg-pop" class="stim-seg-pop" hidden></div>
+      </div>
       <div class="stim-legend">
         <span><span class="stim-key" style="border-top-color:${cfg.color}"></span>${cfg.legendToday}</span>
         <span><span class="stim-key stim-key-base"></span>Baseline</span>
         <span><span class="stim-key-band" style="background:${cfg.color}"></span>Target</span>
       </div>
     </div>
-
-    <div id="stim-seg-detail"></div>
 
     <div class="stim-stat-grid">
       <div class="stim-stat"><div class="stim-stat-label">${cfg.loadLabel}</div><div class="stim-stat-num">${r1(todayLoad)}</div></div>
