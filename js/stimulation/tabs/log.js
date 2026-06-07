@@ -12,6 +12,20 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Index of the time block that contains the current clock time. Clamps to the
+// first/last block when "now" falls before the day window starts or after it ends.
+function currentBlockIndex(blocks) {
+  if (!blocks.length) return 0;
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const idx = blocks.findIndex(b => cur >= b.startMin && cur < b.endMin);
+  if (idx !== -1) return idx;
+  return cur < blocks[0].startMin ? 0 : blocks.length - 1;
+}
+
+// Entry point (called when the Log tab is opened / navigated to). Each open,
+// jump to the block for the current time on Today; in-tab actions use draw()
+// instead so they keep your place.
 export function renderStimLog() {
   const panel = document.getElementById('tab-log');
   if (!panel) return;
@@ -19,6 +33,17 @@ export function renderStimLog() {
   const todayStr = formatDate(today());
   const yestStr = formatDate(addDays(today(), -1));
   if (!state.stimDate || (state.stimDate !== todayStr && state.stimDate !== yestStr)) state.stimDate = todayStr;
+
+  if (state.stimDate === todayStr) state.stimBlock = currentBlockIndex(dayBlocks());
+  draw();
+}
+
+function draw() {
+  const panel = document.getElementById('tab-log');
+  if (!panel) return;
+
+  const todayStr = formatDate(today());
+  const yestStr = formatDate(addDays(today(), -1));
 
   const blocks = dayBlocks();
   if (!Number.isInteger(state.stimBlock) || state.stimBlock < 0 || state.stimBlock >= blocks.length) state.stimBlock = 0;
@@ -70,29 +95,29 @@ export function renderStimLog() {
       </div>`).join('')}
   `;
 
-  // date toggle
+  // date toggle (in-tab action → draw, so it doesn't snap back to "now")
   panel.querySelectorAll('.pill-btn[data-date]').forEach(b => b.addEventListener('click', () => {
-    state.stimDate = b.dataset.date; renderStimLog();
+    state.stimDate = b.dataset.date; draw();
   }));
   // stepper
   const prev = panel.querySelector('#stim-prev');
   const next = panel.querySelector('#stim-next');
-  if (prev) prev.addEventListener('click', () => { if (state.stimBlock > 0) { state.stimBlock--; renderStimLog(); } });
-  if (next) next.addEventListener('click', () => { if (state.stimBlock < blocks.length - 1) { state.stimBlock++; renderStimLog(); } });
+  if (prev) prev.addEventListener('click', () => { if (state.stimBlock > 0) { state.stimBlock--; draw(); } });
+  if (next) next.addEventListener('click', () => { if (state.stimBlock < blocks.length - 1) { state.stimBlock++; draw(); } });
   // add activity to this block
   panel.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => {
     const ex = findActivity(b.dataset.add);
     addEntry(date, block.index, b.dataset.add, ex ? ex.defaultDurationMinutes : 15);
-    renderStimLog();
+    draw();
   }));
   // entry duration chips + remove
   panel.querySelectorAll('[data-dur]').forEach(b => b.addEventListener('click', () => {
     setEntryDuration(date, block.index, parseInt(b.dataset.ei), parseInt(b.dataset.dur));
-    renderStimLog();
+    draw();
   }));
   panel.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => {
     removeEntry(date, block.index, parseInt(b.dataset.rm));
-    renderStimLog();
+    draw();
   }));
 }
 
