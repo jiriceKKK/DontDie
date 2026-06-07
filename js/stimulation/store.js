@@ -408,6 +408,59 @@ export function dailyMetricSeries(n, metric) {
   return out;
 }
 
+// ---- target / ideal range ------------------------------------------------
+// A practical, behaviour-based target band per metric (NOT a medical target).
+// When there's enough history we estimate it from your better days — days that
+// pair low cheap stim with decent productive activation; otherwise we fall back
+// to stable defaults. Because cheap and productive are derived independently,
+// productive activity never widens the cheap target and vice-versa.
+const TARGET_DEFAULTS = {
+  cheap:      { lo: 0,   hi: 0.8 }, // low is good
+  productive: { lo: 1.5, hi: 3.5 }, // a solid productive day
+};
+const round1 = n => Math.round(n * 10) / 10;
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// Returns { lo, hi, source: 'data' | 'default' } for a metric's daily scale.
+export function metricTarget(metric) {
+  const def = TARGET_DEFAULTS[metric] || TARGET_DEFAULTS.cheap;
+  const recent = [];
+  for (let i = 1; i <= 14; i++) {
+    const date = formatDate(addDays(today(), -i));
+    if (!hasAnyEntries(date)) continue;
+    recent.push({ cheap: dailyMetric(date, 'cheap'), prod: dailyMetric(date, 'productive') });
+  }
+  if (recent.length < 4) return { lo: def.lo, hi: def.hi, source: 'default' };
+
+  // Better days = low cheap stim AND decent productive activation.
+  const medCheap = median(recent.map(r => r.cheap));
+  const medProd = median(recent.map(r => r.prod));
+  const good = recent.filter(r => r.cheap <= medCheap && r.prod >= medProd);
+  if (good.length < 2) return { lo: def.lo, hi: def.hi, source: 'default' };
+
+  if (metric === 'cheap') {
+    const hi = Math.max(...good.map(r => r.cheap));
+    return { lo: 0, hi: hi > 0.05 ? round1(hi) : def.hi, source: 'data' };
+  }
+  const vals = good.map(r => r.prod).sort((a, b) => a - b);
+  let lo = vals[0], hi = vals[vals.length - 1];
+  if (hi - lo < 0.1) { lo = Math.max(0, lo - 0.5); hi = hi + 0.5; } // keep a visible band
+  return { lo: round1(lo), hi: round1(hi), source: 'data' };
+}
+
+// 'below' | 'within' | 'above' for a value against a {lo, hi} band.
+export function targetStatus(value, target) {
+  if (!target) return 'within';
+  if (value < target.lo - 1e-9) return 'below';
+  if (value > target.hi + 1e-9) return 'above';
+  return 'within';
+}
+
 // Top contributors to one metric over the last n days, sorted by magnitude.
 export function topActivitiesByMetric(n, metric) {
   const totals = {};

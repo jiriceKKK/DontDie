@@ -247,6 +247,38 @@ export async function dbSaveStimulationStore(stimData) {
   }
 }
 
+// ---- school study-planner data (single-row JSON document) -----------------
+export async function dbGetSchoolStore() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('school_store')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getSchoolStore:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveSchoolStore(schoolData) {
+  try {
+    const { error } = await getSupabase()
+      .from('school_store')
+      .upsert(
+        { id: 1, data: schoolData, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveSchoolStore:', err);
+    return { error: err };
+  }
+}
+
 export async function dbExportAll() {
   try {
     const [logsRes, habitsRes] = await Promise.all([

@@ -1256,22 +1256,24 @@ code {
   transform: rotate(180deg);
 }
 
-/* Animated collapse: grid-template-rows 0fr→1fr smoothly animates the
-   body's height without JS measurement and stays GPU-friendly. The inner
-   wrapper carries the padding and clips its overflow while collapsing. */
+/* Animated collapse: pixel-height accordion. At rest, a collapsed body is
+   height:0 + overflow:hidden, so NOTHING can peek out below the header. The
+   in-between height animation is driven by JS (split.js → animateCollapse),
+   which measures the real content height — one `height` transition stays
+   stable on mobile, unlike animating grid-template-rows (a non-composited
+   layout property that janks). Reduced motion shortens the transition to ~0
+   via the global media query, and the JS skips the animation entirely. */
 .split-day-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 0;
+  overflow: hidden;
+  transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .split-day-card.open .split-day-body {
-  grid-template-rows: 1fr;
+  height: auto;
 }
 
 .split-day-body-inner {
-  overflow: hidden;
-  min-height: 0;
   padding: 0 16px 16px;
 }
 
@@ -2291,19 +2293,15 @@ code {
   margin-top: 8px;
 }
 
+/* Same pixel-height accordion as the day cards (see .split-day-body). */
 .collapsible-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 0;
+  overflow: hidden;
+  transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .collapsible-body.open {
-  grid-template-rows: 1fr;
-}
-
-.collapsible-body > * {
-  overflow: hidden;
-  min-height: 0;
+  height: auto;
 }
 
 /* ============================================================
@@ -2518,6 +2516,19 @@ body[data-mode="stimulation"] {
 .stim-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
 .stim-key-curve { border-top-color: var(--accent); }
 .stim-key-base { border-top-color: var(--text-muted); border-top-style: dashed; }
+.stim-key-band { display: inline-block; width: 12px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 5px; opacity: 0.28; }
+
+/* Target / ideal range card */
+.stim-target-card { padding: 12px 14px; margin-bottom: 16px; }
+.stim-target-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.stim-target-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-family: var(--font-mono); }
+.stim-target-range { font-family: var(--font-mono); font-size: 20px; font-weight: 500; color: var(--text-primary); }
+.stim-target-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.stim-target-status { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.stim-target-status.within { color: var(--stim-productive); border-color: color-mix(in srgb, var(--stim-productive) 45%, transparent); }
+.stim-target-status.above { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.stim-target-status.below { color: var(--text-muted); }
+.stim-target-src { font-size: 11px; color: var(--text-muted); }
 
 /* Secondary context cards under the main stat grid */
 .stim-sub-grid { display: flex; gap: 10px; margin-bottom: 16px; }
@@ -2579,3 +2590,108 @@ body[data-mode="stimulation"] {
 .stim-toplist { display: flex; flex-direction: column; }
 .stim-toprow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
 .stim-toprow:last-child { border-bottom: none; }
+
+/* ============================================================
+   SCHOOL MODE — sky-blue accent theme + study-planner components
+   ============================================================ */
+body[data-mode="school"] {
+  --accent: #38bdf8;
+  --accent-dim: #1ba3e0;
+  --accent-muted: #0c2c3a;
+}
+.mode-dot[data-mode-dot="school"] { background: #38bdf8; }
+
+/* Risk colour tokens (shared by pills + readiness bars) */
+.school-pill.risk-low,    .school-readiness-fill.risk-low    { background: rgba(52,211,153,0.18); color: #34d399; }
+.school-pill.risk-medium, .school-readiness-fill.risk-medium { background: rgba(245,158,11,0.18); color: #f59e0b; }
+.school-pill.risk-high,   .school-readiness-fill.risk-high   { background: rgba(248,113,113,0.18); color: #f87171; }
+.school-readiness-fill.risk-low { background: #34d399; }
+.school-readiness-fill.risk-medium { background: #f59e0b; }
+.school-readiness-fill.risk-high { background: #f87171; }
+
+/* Session action card */
+.school-session-card {
+  position: relative; background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--subject-color, var(--accent));
+  border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 10px;
+}
+.school-session-card.is-done { opacity: 0.62; }
+.school-session-card.is-skipped { opacity: 0.45; }
+.school-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.school-card-headline { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.school-subject { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.school-dot { color: var(--text-muted); }
+.school-stype { font-size: 14px; font-weight: 500; }
+.school-min { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.school-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.school-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--bg-elevated); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.school-pill.ok { color: #34d399; }
+.school-reason { font-size: 13px; color: var(--text-secondary); margin-top: 8px; line-height: 1.4; }
+.school-targets { font-size: 11px; color: var(--text-muted); margin-top: 5px; font-family: var(--font-mono); }
+.school-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.school-btn { flex: 1; min-width: 92px; min-height: 38px; font-size: 13px; }
+
+/* Missed banner */
+.school-missed { padding: 12px 14px; margin-bottom: 12px; border-color: rgba(248,113,113,0.4); }
+.school-missed-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-secondary); }
+.school-missed-row .school-btn { flex: 0 0 auto; min-width: 0; }
+
+/* Readiness bar */
+.school-readiness { height: 6px; border-radius: 3px; background: var(--bg-elevated); overflow: hidden; margin: 8px 0 2px; }
+.school-readiness-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+
+/* Dashboard upcoming-tests strip */
+.school-test-strip { display: flex; flex-direction: column; gap: 8px; }
+.school-test-mini { text-align: left; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); padding: 11px 13px; }
+.school-test-mini:active { background: var(--bg-elevated); }
+.school-test-mini-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.school-test-mini-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* Tests page cards */
+.school-filter { margin-bottom: 12px; }
+.school-test-card { display: block; width: 100%; text-align: left; background: var(--bg-card); border: 1px solid var(--border-subtle); border-left: 3px solid var(--subject-color, var(--accent)); border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 10px; }
+.school-test-card:active { background: var(--bg-elevated); }
+.school-test-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.school-test-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.school-test-card-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.school-test-card-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); margin-top: 4px; }
+.school-test-weak { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+
+/* Plan day headers */
+.school-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.school-day-min { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.school-overdue-title { color: #f87171; }
+
+/* Results page */
+.school-result-test { padding: 12px 14px; margin-bottom: 10px; }
+.school-result-test-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.school-result-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.school-result-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.school-result-weak { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+.school-result-list { display: flex; flex-direction: column; gap: 8px; }
+.school-result-row { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-chip); padding: 10px 12px; }
+.school-result-row-top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.school-result-score { font-family: var(--font-mono); color: var(--accent); }
+.school-result-row-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.school-result-row-weak { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* Settings · subjects */
+.school-subj-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.school-subj-row { display: flex; align-items: center; gap: 10px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-chip); padding: 11px 13px; text-align: left; }
+.school-subj-row:active { background: var(--bg-elevated); }
+.school-subj-row.archived { opacity: 0.5; }
+.school-subj-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.school-subj-name { flex: 1; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.school-subj-meta { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+.school-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.school-swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; }
+.school-swatch.active { border-color: var(--text-primary); }
+
+/* Misc */
+.school-field-help { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.4; }
+.school-modal-help { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4; }
+.school-modal-help code { font-size: 11px; background: var(--bg-elevated); padding: 1px 5px; border-radius: 4px; }
+.school-area { width: 100%; font-family: var(--font-mono); font-size: 12px; resize: vertical; }
+.school-import-err { font-size: 12px; color: var(--danger); margin: 8px 0; font-family: var(--font-mono); }
+.school-test-manage { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.school-test-manage .school-btn { flex: 1; min-width: 88px; }

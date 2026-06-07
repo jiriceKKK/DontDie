@@ -2,11 +2,12 @@ import { state } from './state.js';
 import { formatDate, today, getNDaysAgo } from './utils/date.js';
 import {
   dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection,
-  dbGetSplitConfig, dbGetMentalStore, dbGetStimulationStore,
+  dbGetSplitConfig, dbGetMentalStore, dbGetStimulationStore, dbGetSchoolStore,
 } from './db.js';
 import { initSplit } from './split/store.js';
 import { initMental } from './mental/store.js';
 import { initStimulation } from './stimulation/store.js';
+import { initSchool } from './school/store.js';
 import { initSwipe } from './navigation.js';
 import { initModes } from './modes/controller.js';
 import { setOnline, startRetryInterval } from './sync.js';
@@ -37,13 +38,14 @@ async function startApp() {
   const rangeEnd   = formatDate(today());
   const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
 
-  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes] = await Promise.all([
+  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes] = await Promise.all([
     dbGetLogsForRange(rangeStart, rangeEnd),
     dbGetCustomHabits(),
     dbCheckConnection(),
     dbGetSplitConfig(),
     dbGetMentalStore(),
     dbGetStimulationStore(),
+    dbGetSchoolStore(),
   ]);
 
   state.logsByDate   = logsRes.data   || {};
@@ -51,10 +53,11 @@ async function startApp() {
   state.connectionOk = connRes;
   state.initialized  = true;
 
-  // Seed/load split + mental + stimulation data (cloud → local → default).
+  // Seed/load split + mental + stimulation + school data (cloud → local → default).
   initSplit(splitRes.data);
   initMental(mentalRes.data);
   initStimulation(stimRes.data);
+  initSchool(schoolRes.data);
 
   if (!connRes) {
     setOnline(false);

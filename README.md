@@ -12,6 +12,7 @@ A multi-mode health tracker. A **mode switcher** (top-left) flips the whole app
 - **Physical Health** (green) — Today · Week · Stats · Split · Settings
 - **Mental Health** (calm blue) — Check-in · Tasks · Journal · Stats
 - **Stimulation** (amber) — Dashboard · Log · Activities · Stats · Settings
+- **School** (sky blue) — Today · Plan · Tests · Results · Settings
 
 Each mode has its own ordered tabs and mobile swipe navigation. Adding a future
 mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
@@ -39,12 +40,21 @@ Stim Load or Cheap Stim Baseline** — they raise Productive Activation instead.
 
 The **Dashboard** has a `Cheap Stim · Productive` toggle (segmented control,
 session-remembered). It swaps which metric is the main chart — cheap = amber
-curve, productive = green curve — each plotted against *its own* baseline on a
-shared Y scale, so a small day always reads below a larger baseline. The other
-metrics stay visible as smaller context cards (Productive Activation / Cheap
-Stim Load / Recovery Effect). Stats shows cheap-stim and productive trends
-separately, top activities per metric, and a factual mood crossover if Mental
-Health data exists.
+curve, productive = green curve — each plotted against *its own* baseline **and
+a subtle target band** on a shared Y scale, so a small day always reads below a
+larger baseline/target. The other metrics stay visible as smaller context cards
+(Productive Activation / Cheap Stim Load / Recovery Effect).
+
+**Target range** is a practical, behaviour-based band (*not* a medical target).
+When there are ≥4 logged days it's estimated from your *better days* — days that
+pair low cheap stim with decent productive activation; otherwise it falls back
+to stable defaults (cheap `0–0.8`, productive `1.5–3.5`). Cheap and productive
+targets are derived independently, so productive activity never widens the cheap
+target. The dashboard shows the range, an `On target / Above / Below` status,
+and folds it into the factual summary (e.g. *"Today is within your cheap-stim
+target range. That's below your recent baseline (1.2 vs 3.4)."*). Stats shows
+cheap-stim and productive trends separately, top activities per metric, and a
+factual mood crossover if Mental Health data exists.
 
 **Importing activities from text** (Activities → *Import from text*) — one per line:
 
@@ -74,6 +84,47 @@ preview and skipped; duplicates (by name) are skipped on import.
 - **Stats** — factual patterns only: mood/stress/energy trends, a per-day task-completion chart, tasks-vs-mood, sleep vs mood, top tags, best/worst weekday, recent-change summary
 
 Mental Health is data-based and non-clinical — no diagnoses, no advice, no filler.
+
+### School
+
+A **science-based study planner** for preparing for tests — not a calendar or
+to-do list. It plans *what kind* of study session to do and when, then generates
+a high-quality **copy-paste prompt** for Claude. The app itself never calls an AI
+and never generates quiz content: you upload your notes/images into a Claude
+chat, paste the prompt, and Claude builds the interactive session (often as an
+HTML artifact). After a scored session you paste the `APP_RESULT` block back and
+the plan adapts.
+
+**Pages:** Today (dashboard) · Plan · Tests · Results · Settings (Subjects live
+in Settings).
+
+**Session types** (evidence-based): `diagnostic_quiz`, `active_reading`,
+`active_recall`, `flashcards`, `mixed_quiz`, `weak_spots_drill`,
+`interleaved_practice`, `final_review`. Each has its own English prompt template
+that tells Claude to *"use only the notes, images, screenshots, text and context
+already provided in this chat"* — so you never retype subject/source.
+
+**How the plan is built** (`js/school/planner.js`, rule-based & explainable):
+the slot's *days-until-test* sets its phase, so one plan naturally progresses —
+spaced sessions far out (≥21d) → retrieval mid (8–20d) → drills/quizzes near
+(3–7d) → final review last (0–2d, no big new content). Two inputs drive
+intensity:
+
+- **Worst acceptable grade (1–5)** — *"the worst grade you can get while still
+  keeping the result you want."* 1 = high pressure (denser plan, higher readiness
+  threshold, react harder to bad scores); 5 = light plan.
+- **Last quiz score** — `<50%` adds foundations + weak-spot drills; `≥85%` shifts
+  to interleaving/final review.
+
+**APP_RESULT loop:** scored prompts ask Claude to print an `APP_RESULT … END_APP_RESULT`
+block. Paste it (from a session card or the Results page); the parser validates
+`session_type`/`score_percent`, extracts weak/strong topics, stores the result,
+updates the test's readiness + weak topics, marks the session done, and (if
+enabled) regenerates upcoming sessions. Invalid blocks show a clear error and
+store nothing. Pasting is optional — you can also just mark a session done.
+
+Stays factual — readiness %, risk level, weak topics, planned vs done. No
+motivational filler, no fake certainty, no neuroscience claims.
 
 Data lives in Supabase (free tier is plenty). The app works offline and queues changes for retry.
 
@@ -140,22 +191,32 @@ CREATE TABLE stimulation_store (
   CONSTRAINT stimulation_store_singleton CHECK (id = 1)
 );
 
+-- School study-planner data: subjects, tests, sessions, results (single JSON document)
+CREATE TABLE school_store (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT school_store_singleton CHECK (id = 1)
+);
+
 ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stimulation_store ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_store ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON split_config FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON stimulation_store FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON school_store FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
-> The `split_config`, `mh_store` and `stimulation_store` tables are optional.
-> Without them those features still work fully from `localStorage` — they just
-> won't sync across devices until the tables exist.
+> The `split_config`, `mh_store`, `stimulation_store` and `school_store` tables
+> are optional. Without them those features still work fully from `localStorage`
+> — they just won't sync across devices until the tables exist.
 
 ### 4 — Fill in `js/config.js`
 
@@ -243,6 +304,13 @@ js/
     store.js        — Stimulation data: load/seed/save + CRUD + load/baseline calc + parser
     defaultActivities.js — seed activity library + categories + default settings
     tabs/           — dashboard · log · activities · stats · settings
+  school/
+    store.js        — School data: load/seed/save + subjects/tests/sessions/results CRUD + APP_RESULT parser
+    planner.js      — pure rule-based study-session scheduler
+    prompts.js      — the 8 English copy-paste prompt templates + buildPrompt()
+    sessionTypes.js — session-type metadata (label, minutes, scored, colour)
+    util.js         — esc(), copyToClipboard(), parseTopics()
+    tabs/           — dashboard (Today) · plan · tests · results · settings (+ _shared.js)
   utils/
     date.js         — formatDate, parseDate, today, addDays, getMondayOfWeek, …
   ui/

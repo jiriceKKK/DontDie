@@ -96,17 +96,80 @@ function renderSplitContent(view, todayDow) {
   wireContent(container, todayDow);
 }
 
+function reduceMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Pixel-height accordion: animate `body` between 0 and its real content height,
+// then hand the resting state back to CSS (height:auto when open, 0 when
+// collapsed). overflow:hidden means nothing can leak below the header at rest,
+// and a single `height` transition stays smooth/stable on mobile. The class is
+// toggled by the caller (drives the chevron + the resting CSS height); this just
+// animates the gap. Safe to interrupt mid-flight (rapid open/close).
+function animateCollapse(body, willBeOpen) {
+  if (!body) return;
+  // Reduced motion: skip the animation; the class toggle + CSS resting height
+  // already produced the (instant) change.
+  if (reduceMotion()) return;
+
+  // Current visual height first, so an interrupt animates from where we are.
+  const startH = body.getBoundingClientRect().height;
+
+  // Drop any in-flight finish handler so it can't clobber this run.
+  if (body._collapseEnd) { body.removeEventListener('transitionend', body._collapseEnd); body._collapseEnd = null; }
+  if (body._collapseTimer) { clearTimeout(body._collapseTimer); body._collapseTimer = null; }
+
+  body.style.overflow = 'hidden';
+  body.style.willChange = 'height';
+
+  let endH;
+  if (willBeOpen) {
+    body.style.height = 'auto';                 // measure natural content height
+    endH = body.getBoundingClientRect().height;
+  } else {
+    endH = 0;
+  }
+
+  body.style.height = startH + 'px';
+  void body.offsetHeight;                       // reflow to lock the start height
+  requestAnimationFrame(() => { body.style.height = endH + 'px'; });
+
+  const finish = () => {
+    body.style.height = '';                      // CSS resting state takes over
+    body.style.overflow = '';
+    body.style.willChange = '';
+    if (body._collapseEnd) body.removeEventListener('transitionend', body._collapseEnd);
+    if (body._collapseTimer) clearTimeout(body._collapseTimer);
+    body._collapseEnd = null;
+    body._collapseTimer = null;
+  };
+  const onEnd = (e) => { if (e.target === body && e.propertyName === 'height') finish(); };
+  body._collapseEnd = onEnd;
+  body.addEventListener('transitionend', onEnd);
+  // Fallback: transitionend won't fire if the height didn't actually change.
+  body._collapseTimer = setTimeout(finish, 360);
+}
+
 // Open/close behaviour for collapsible cards + sections. These attach to fresh
 // child elements on every render, so they never stack. (The delegated edit
 // actions live on #split-content, wired once in renderSplit.)
 function wireContent(container, todayDow) {
   container.querySelectorAll('.split-day-header').forEach(h =>
-    h.addEventListener('click', () => h.closest('.split-day-card').classList.toggle('open')));
+    h.addEventListener('click', () => {
+      const card = h.closest('.split-day-card');
+      if (!card) return;
+      const willOpen = !card.classList.contains('open');
+      card.classList.toggle('open');
+      animateCollapse(card.querySelector('.split-day-body'), willOpen);
+    }));
 
   container.querySelectorAll('.collapsible-header').forEach(h =>
     h.addEventListener('click', () => {
       const body = h.nextElementSibling;
-      if (body && body.classList.contains('collapsible-body')) body.classList.toggle('open');
+      if (!body || !body.classList.contains('collapsible-body')) return;
+      const willOpen = !body.classList.contains('open');
+      body.classList.toggle('open');
+      animateCollapse(body, willOpen);
     }));
 }
 

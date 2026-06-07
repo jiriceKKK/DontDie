@@ -10,6 +10,8 @@ export const state = {
   stimDate: null,            // Log page: which day is being edited (set by the tab)
   stimBlock: 0,              // Log page: current block index in the stepper
   stimView: 'cheap',         // Dashboard metric toggle: 'cheap' | 'productive' (session only)
+  school: null,              // school study-planner data (loaded by js/school/store.js)
+  schoolTestFilter: 'active',// Tests page filter (transient)
 
   activeTab: 'today',
   activeTabIndex: 0,
