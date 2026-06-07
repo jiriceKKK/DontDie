@@ -3,12 +3,15 @@ import { BUILT_IN_HABITS, CATEGORY_COLORS, PRESET_COLORS } from '../constants.js
 import { formatDate, today } from '../utils/date.js';
 import {
   dbCreateCustomHabit, dbUpdateCustomHabit, dbDeleteCustomHabit,
-  dbDeleteAllLogs, dbExportAll,
+  dbDeleteAllLogs,
 } from '../db.js';
 import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
 import { switchTab } from '../navigation.js';
 import { renderTodayHabits, renderToday } from './today.js';
+import { buildBackup } from '../export/backup.js';
+import { buildReflection } from '../export/aiReflection.js';
+import { downloadFile } from '../export/download.js';
 
 export function renderSettings() {
   const panel = document.getElementById('tab-settings');
@@ -68,23 +71,44 @@ export function renderSettings() {
     <div class="section-title">Built-in Habits</div>
     <div class="card">${builtinHabitsHtml}</div>
 
+    <div class="section-title">Data Export</div>
+    <div class="card">
+      <div class="form-group" style="margin-bottom:12px;">
+        <label class="form-label">AI report time range</label>
+        <select class="form-input" id="export-range">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="all">All time</option>
+        </select>
+      </div>
+      <div class="data-actions">
+        <button class="btn btn-primary" id="export-ai" style="width:100%;justify-content:flex-start;gap:10px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Export AI reflection report
+        </button>
+        <button class="btn btn-ghost" id="export-ai-compact" style="width:100%;justify-content:flex-start;gap:10px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Export compact AI summary
+        </button>
+        <button class="btn btn-ghost" id="export-backup" style="width:100%;justify-content:flex-start;gap:10px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export backup JSON (all time)
+        </button>
+      </div>
+      <p class="export-note">AI reflection export includes explanations and summaries so you can discuss your patterns with an AI. It is not medical advice.</p>
+      <p class="export-warn">⚠ This may include personal notes, mood data, stimulation logs and school results. Only share it with an AI or person you trust.</p>
+    </div>
+
     <div class="section-title">Data</div>
     <div class="card data-actions">
-      <button class="btn btn-ghost" id="export-btn" style="width:100%;justify-content:flex-start;gap:10px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Export data as JSON
-      </button>
       <button class="btn btn-danger" id="clear-btn" style="width:100%;justify-content:flex-start;gap:10px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
           <path d="M10 11v6M14 11v6"/>
         </svg>
-        Clear all data
+        Clear all habit logs
       </button>
     </div>
 
@@ -175,15 +199,27 @@ export function renderSettings() {
     });
   });
 
-  // Export
-  panel.querySelector('#export-btn').addEventListener('click', async () => {
-    const { data, error } = await dbExportAll();
-    if (error) { showToast('Export failed', 'error'); return; }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `dontdie-export-${formatDate(today())}.json`; a.click();
-    URL.revokeObjectURL(url);
+  // Exports — whole-app backup JSON + AI reflection / compact reports.
+  const dstr = formatDate(today());
+  const runExport = (build, filename, mime, okMsg) => {
+    try {
+      const text = build();
+      const ok = downloadFile(filename, text, mime);
+      showToast(ok ? okMsg : 'Export failed', ok ? 'success' : 'error');
+    } catch (err) {
+      console.error('[export]', err);
+      showToast('Export failed', 'error');
+    }
+  };
+  panel.querySelector('#export-backup').addEventListener('click', () =>
+    runExport(buildBackup, `dontdie_backup_${dstr}.json`, 'application/json', 'Backup exported'));
+  panel.querySelector('#export-ai').addEventListener('click', () => {
+    const range = panel.querySelector('#export-range').value;
+    runExport(() => buildReflection(range, { compact: false }), `dontdie_ai_reflection_${dstr}.md`, 'text/markdown', 'AI report exported');
+  });
+  panel.querySelector('#export-ai-compact').addEventListener('click', () => {
+    const range = panel.querySelector('#export-range').value;
+    runExport(() => buildReflection(range, { compact: true }), `dontdie_ai_summary_${dstr}.md`, 'text/markdown', 'Compact summary exported');
   });
 
   // Clear all

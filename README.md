@@ -126,6 +126,31 @@ store nothing. Pasting is optional — you can also just mark a session done.
 Stays factual — readiness %, risk level, weak topics, planned vs done. No
 motivational filler, no fake certainty, no neuroscience claims.
 
+### Data export (Physical Health → Settings → *Data Export*)
+
+Three whole-app exports (every mode at once) with a time-range selector (Last
+7 / 30 / 90 days / All time; default 30 for the AI reports):
+
+- **AI reflection report** (`dontdie_ai_reflection_YYYY-MM-DD.md`) — the main
+  one. A Markdown report an AI can read without knowing the app: how-to-read
+  notes, plain-English explanations of every module, an executive summary,
+  per-module factual summaries (completion rates, mood/stress trends, cheap vs
+  productive averages, readiness/weak topics…), cross-module pattern prompts, a
+  range-filtered raw-data appendix, and a ready-to-paste analysis prompt. Upload
+  your notes into a chat and paste this to discuss your patterns.
+- **Compact AI summary** (`dontdie_ai_summary_YYYY-MM-DD.md`) — same report
+  without the raw appendix, for when the full file is too large for a chat.
+- **Backup JSON** (`dontdie_backup_YYYY-MM-DD.json`) — raw, complete,
+  machine-readable, always all-time.
+
+Date-based logs (habit logs, check-ins, tasks, journal, stimulation blocks,
+school sessions/results) are filtered to the selected range; configuration
+(custom habits, split, activity library, subjects/tests, settings) is always
+included in full. The export is **behaviour data only** — it never contains the
+Supabase URL/key, PIN hash, or any auth/session internals — and explicitly
+states it is not medical/diagnostic. Files download via Blob (with an
+open-in-new-tab fallback for older iOS). Code lives in `js/export/`.
+
 Data lives in Supabase (free tier is plenty). The app works offline and queues changes for retry.
 
 ---
@@ -311,6 +336,11 @@ js/
     sessionTypes.js — session-type metadata (label, minutes, scored, colour)
     util.js         — esc(), copyToClipboard(), parseTopics()
     tabs/           — dashboard (Today) · plan · tests · results · settings (+ _shared.js)
+  export/
+    collect.js      — whole-app raw data collection + date-range filtering (Set→array, deep clone)
+    backup.js       — buildBackup() → complete all-time JSON
+    aiReflection.js — buildReflection() → Markdown report: explanations + summaries + appendix + prompt
+    download.js     — Blob download with iOS open-in-tab fallback
   utils/
     date.js         — formatDate, parseDate, today, addDays, getMondayOfWeek, …
   ui/

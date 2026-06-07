@@ -1831,6 +1831,10 @@ code {
   gap: 8px;
 }
 
+/* Data Export notes */
+.export-note { font-size: 12px; color: var(--text-muted); line-height: 1.45; margin: 12px 0 0; }
+.export-warn { font-size: 12px; color: var(--warning); line-height: 1.45; margin: 8px 0 0; }
+
 /* ============================================================
    MODAL
    ============================================================ */
