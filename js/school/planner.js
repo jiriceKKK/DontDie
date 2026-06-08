@@ -66,6 +66,7 @@ function pool(phase, band) {
 const MINUTES = {
   diagnostic_quiz: 25, active_reading: 20, active_recall: 25, flashcards: 20,
   mixed_quiz: 30, weak_spots_drill: 25, interleaved_practice: 30, final_review: 20,
+  quick_review: 8,
 };
 
 const uniq = arr => [...new Set(arr.filter(Boolean))];
@@ -89,8 +90,19 @@ function reasonFor(type, remaining, lastScore, weak) {
     case 'weak_spots_drill':     return lastScore != null ? `Target weak topics after a ${lastScore}% quiz.` : 'Target your weak topics.';
     case 'interleaved_practice': return `Practice telling similar topics apart; ${inDays}.`;
     case 'final_review':         return `Final high-yield review — ${inDays}.`;
+    case 'quick_review':         return 'Test day — short break-time review only, not a full study session.';
     default:                     return inDays;
   }
+}
+
+// Build a single session spec ({ sessionType, minutes, reason, targetTopics }).
+function mkSpec(type, remaining, lastScore, weak, topics, reasonOverride) {
+  return {
+    sessionType: type,
+    minutes: MINUTES[type] || 25,
+    reason: reasonOverride || reasonFor(type, remaining, lastScore, weak),
+    targetTopics: targetsFor(type, weak, topics),
+  };
 }
 
 // Main entry. `input`:
@@ -100,6 +112,9 @@ function reasonFor(type, remaining, lastScore, weak) {
 export function generatePlan(input) {
   const days = Number(input && input.daysUntilTest);
   if (!Number.isFinite(days) || days < 0) return [];
+  // No normal study session is scheduled ON the test day — on the real test day
+  // I'm already at school. If the test is today there are no main study days left.
+  if (days === 0) return [];
 
   const grade = [1, 2, 3, 4, 5].includes(input.worstAcceptableGrade) ? input.worstAcceptableGrade : 3;
   const pressure = PRESSURE[grade];
@@ -108,16 +123,18 @@ export function generatePlan(input) {
   const topics = uniq(input.topics || []);
   const hasData = !!input.hasData;
 
-  // Build slot offsets from today (0) toward the test, then guarantee a
-  // final-review slot the day before the test.
+  // The last valid main study day is the day BEFORE the test (offset days-1).
+  const lastStudyOff = days - 1;
+
+  // Build slot offsets from today (0) up to (not past) the last study day, then
+  // guarantee a final-review slot on that last study day.
   const offsets = new Map(); // off → remaining (dedupe by day)
   let off = 0, guard = 0;
-  while (off <= days && guard++ < 80) {
+  while (off <= lastStudyOff && guard++ < 80) {
     offsets.set(off, days - off);
     off += gapFor(days - off, pressure);
   }
-  const finalOff = days >= 1 ? days - 1 : 0;
-  if (!offsets.has(finalOff)) offsets.set(finalOff, days - finalOff);
+  if (!offsets.has(lastStudyOff)) offsets.set(lastStudyOff, days - lastStudyOff);
 
   const slots = [...offsets.entries()]
     .map(([o, remaining]) => ({ off: o, remaining, phase: phaseFor(remaining) }))
@@ -155,4 +172,58 @@ export function generatePlan(input) {
     });
   }
   return out;
+}
+
+// Pick the single best NEXT session for a manually-added extra session on a
+// specific day. Same evidence-based rules as the planner, but context-aware so
+// repeated extras on one free day progress logically instead of repeating.
+//
+// `input`:
+//   remaining (int): days from the chosen day to the test (0 = test day)
+//   worstAcceptableGrade (1–5), lastScore (0–100|null)
+//   weakTopics[], topics[], hasData (bool)
+//   recentTypes (string[]): session types already done/planned up to & including
+//     the chosen day, oldest→newest (so same-day extras don't repeat)
+//   isTestDay (bool): chosen day IS the test date → only a short quick review
+//
+// Returns { sessionType, minutes, reason, targetTopics } or null when invalid
+// (chosen day is after the test).
+export function suggestSession(input) {
+  const remaining = Number(input && input.remaining);
+  const grade = [1, 2, 3, 4, 5].includes(input.worstAcceptableGrade) ? input.worstAcceptableGrade : 3;
+  const pressure = PRESSURE[grade];
+  const band = scoreBand(input.lastScore);
+  const weak = uniq(input.weakTopics || []);
+  const topics = uniq(input.topics || []);
+  const hasData = !!input.hasData;
+  const recent = (input.recentTypes || []).filter(Boolean);
+  const last = recent[recent.length - 1] || null;
+
+  // Test day → only a short break-time review, never a full session.
+  if (input.isTestDay) return mkSpec('quick_review', remaining, input.lastScore, weak, topics);
+
+  if (!Number.isFinite(remaining) || remaining < 0) return null; // after the test
+
+  const phase = phaseFor(remaining);
+
+  // No data yet: diagnose first when there's time, otherwise read in (very new
+  // material / very close). Only once — don't keep proposing diagnostics.
+  if (!hasData && !recent.includes('diagnostic_quiz')) {
+    return remaining >= 3
+      ? mkSpec('diagnostic_quiz', remaining, input.lastScore, weak, topics)
+      : mkSpec('active_reading', remaining, input.lastScore, weak, topics);
+  }
+
+  // Otherwise choose from the phase/band pool, biased to weak spots when scoring
+  // low, avoiding an immediate repeat and preferring the least-used type so a run
+  // of extras spreads across types instead of stacking four identical quizzes.
+  let candidates = pool(phase, band).slice();
+  if ((band === 'low' || band === 'midlow') && weak.length && !candidates.includes('weak_spots_drill')) {
+    candidates.unshift('weak_spots_drill');
+  }
+  const usage = t => recent.filter(x => x === t).length;
+  let pick = candidates.filter(t => t !== last);
+  if (!pick.length) pick = candidates;
+  pick.sort((a, b) => usage(a) - usage(b) || candidates.indexOf(a) - candidates.indexOf(b));
+  return mkSpec(pick[0], remaining, input.lastScore, weak, topics);
 }

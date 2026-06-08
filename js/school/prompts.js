@@ -280,11 +280,40 @@ Requirements:
 After grading, output:
 
 ${resultBlock('final_review', c, { next: '[final_review | weak_spots_drill | none]', minutes: '[0-20]' })}`,
+
+  quick_review: c => `I want a very short test-day quick review. The test is today and I only have a 5–10 minute break before it.
+
+${USE_MATERIAL}
+
+Goal:
+A fast, high-yield refresher right before the test. Do NOT teach new material and do NOT run a long session.
+
+${contextBlock('quick_review', c)}
+
+Create a quick review.
+
+Requirements:
+
+1. Keep it doable in 5–10 minutes total.
+2. Create 5–8 lightning checks (one-line question → one-line answer).
+3. Focus on my weak topics and the must-remember facts/formulas/definitions.
+4. No big new explanations. No long HTML unless a tiny list genuinely helps.
+5. End with a 3-item "do not forget" list.
+6. Keep corrections to a single line each.
+
+After the review, output:
+
+${resultBlock('quick_review', c, { score: 'n/a', weak: c.weakTopicsOrNone, strong: 'none', next: '[none | final_review]', minutes: '[0-10]' })}`,
 };
 
 // Build the full prompt string for a session. Unknown type → mixed_quiz.
+// Manually-added extra sessions get a short note so Claude knows the context.
 export function buildPrompt(session, deps = {}) {
   const c = promptContext(session, deps);
   const tpl = TEMPLATES[session && session.sessionType] || TEMPLATES.mixed_quiz;
-  return tpl(c);
+  let prompt = tpl(c);
+  if (session && session.source === 'manual_extra') {
+    prompt = `Note: this is an additional study session I added manually because I have extra study time today. Keep it useful and self-contained.\n\n${prompt}`;
+  }
+  return prompt;
 }

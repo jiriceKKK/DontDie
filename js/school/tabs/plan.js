@@ -2,7 +2,7 @@ import { formatDate, today, parseDate } from '../../utils/date.js';
 import { switchTab } from '../../navigation.js';
 import { esc } from '../util.js';
 import { getSchool, getTests } from '../store.js';
-import { sessionCardHtml, bindSchoolActions } from './_shared.js';
+import { sessionCardHtml, bindSchoolActions, openAddSessionModal } from './_shared.js';
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -20,6 +20,7 @@ export function renderSchoolPlan() {
   if (!panel) return;
 
   const header = `<div class="mh-header"><div class="mh-title">Plan</div><div class="mh-subtitle">Your generated study sessions</div></div>`;
+  const addBar = `<button class="school-add-top" data-add-session="${formatDate(today())}">+ Add extra session</button>`;
 
   if (getTests('active').length === 0) {
     panel.innerHTML = header + `
@@ -57,11 +58,17 @@ export function renderSchoolPlan() {
   }
   for (const [date, list] of groups) {
     const mins = list.filter(s => s.status === 'planned').reduce((sum, s) => sum + s.minutes, 0);
-    body += `<div class="section-title school-day-head"><span>${prettyDate(date)}</span><span class="school-day-min">${mins ? mins + ' min' : ''}</span></div>`;
+    body += `<div class="section-title school-day-head">
+        <span>${prettyDate(date)}</span>
+        <span class="school-day-head-right">
+          ${mins ? `<span class="school-day-min">${mins} min</span>` : ''}
+          <button class="school-add-day" data-add-session="${date}" aria-label="Add session to ${prettyDate(date)}">+</button>
+        </span>
+      </div>`;
     body += list.map(s => sessionCardHtml(s)).join('');
   }
 
-  panel.innerHTML = header + body;
+  panel.innerHTML = header + addBar + body;
   wire(panel);
 }
 
@@ -70,6 +77,8 @@ function wire(panel) {
   panel.dataset.schoolBound = '1';
   bindSchoolActions(panel, renderSchoolPlan);
   panel.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-session]');
+    if (add) { openAddSessionModal({ date: add.dataset.addSession, onDone: renderSchoolPlan }); return; }
     const go = e.target.closest('[data-go]');
     if (go) switchTab(go.dataset.go);
   });

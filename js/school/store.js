@@ -13,7 +13,7 @@ import { state } from '../state.js';
 import { dbSaveSchoolStore } from '../db.js';
 import { showToast } from '../ui/toast.js';
 import { formatDate, today, addDays, parseDate } from '../utils/date.js';
-import { generatePlan, READINESS_THRESHOLD } from './planner.js';
+import { generatePlan, suggestSession, READINESS_THRESHOLD } from './planner.js';
 import { isValidSessionType } from './sessionTypes.js';
 import { buildPrompt } from './prompts.js';
 
@@ -91,6 +91,8 @@ function normalize(d) {
     s.minutes = clamp(num(s.minutes, 25), 5, 180);
     s.status = ['planned', 'done', 'skipped'].includes(s.status) ? s.status : 'planned';
     s.targetTopics = Array.isArray(s.targetTopics) ? s.targetTopics : [];
+    s.source = ['auto', 'manual_extra', 'quick_review'].includes(s.source) ? s.source : 'auto';
+    s.addedManually = s.source !== 'auto';
     if (!s.createdAt) s.createdAt = nowIso();
   }
   d.results = Array.isArray(d.results) ? d.results : [];
@@ -311,9 +313,11 @@ export function regeneratePlanForTest(testId) {
   const t = findTest(testId);
   const todayStr = formatDate(today());
 
-  // Drop future planned sessions for this test; keep history + done/skipped.
+  // Drop future AUTO planned sessions for this test; keep history + done/skipped,
+  // and keep manually-added extras / quick reviews (the auto planner must never
+  // silently delete sessions the user created by hand).
   state.school.sessions = state.school.sessions.filter(s =>
-    s.testId !== testId || s.status !== 'planned' || s.date < todayStr);
+    s.testId !== testId || s.status !== 'planned' || s.date < todayStr || s.source !== 'auto');
 
   if (!t || t.status !== 'active') return;
   const du = daysUntil(t.testDate);
@@ -349,6 +353,8 @@ export function regeneratePlanForTest(testId) {
       sessionType: spec.sessionType,
       minutes: spec.minutes,
       status: 'planned',
+      source: 'auto',
+      addedManually: false,
       reason: spec.reason,
       targetTopics: spec.targetTopics,
       promptTemplateId: spec.sessionType,
@@ -357,6 +363,90 @@ export function regeneratePlanForTest(testId) {
       updatedAt: nowIso(),
     });
   }
+}
+
+// ---- extra (manually added) sessions --------------------------------------
+
+// Recent session types for a test up to & including `dateStr`, oldest→newest.
+// Used so repeated extras on one day progress instead of repeating a type.
+function recentTypesForTest(testId, dateStr) {
+  return state.school.sessions
+    .filter(s => s.testId === testId && s.status !== 'skipped' && s.date <= dateStr)
+    .sort((a, b) => a.date.localeCompare(b.date) || stampMs(a.createdAt) - stampMs(b.createdAt))
+    .map(s => s.sessionType);
+}
+
+// Propose (without saving) the best extra session for a test on a given day.
+// Returns { ok, error?, spec, isTestDay }. spec = { sessionType, minutes,
+// reason, targetTopics, source }. Pure preview — the modal renders this.
+export function extraSessionSpec(testId, dateStr) {
+  const t = findTest(testId);
+  if (!t) return { ok: false, error: 'Pick a test first.' };
+  if (t.status === 'archived') return { ok: false, error: 'This test is archived.' };
+  if (t.status === 'completed') return { ok: false, error: 'This test is already completed.' };
+  if (!dateStr) return { ok: false, error: 'No day selected.' };
+
+  const todayStr = formatDate(today());
+  if (dateStr < todayStr) return { ok: false, error: 'Pick today or a future day.' };
+
+  const remaining = daysUntil(t.testDate);
+  if (remaining == null) return { ok: false, error: 'This test has no valid date.' };
+
+  // remaining is days from TODAY to the test; for the chosen day it shifts.
+  const dayToTest = Math.round((parseDate(t.testDate).getTime() - parseDate(dateStr).getTime()) / 86400000);
+  if (dayToTest < 0) return { ok: false, error: 'That day is after the test date.' };
+  const isTestDay = dayToTest === 0;
+
+  const hasData = t.lastScore != null || sessionsForTest(testId).some(s => s.status === 'done' && s.resultId);
+  const spec = suggestSession({
+    remaining: dayToTest,
+    worstAcceptableGrade: t.worstAcceptableGrade,
+    lastScore: t.lastScore,
+    weakTopics: t.weakTopics,
+    topics: t.topics,
+    hasData,
+    recentTypes: recentTypesForTest(testId, dateStr),
+    isTestDay,
+  });
+  if (!spec) return { ok: false, error: 'Could not propose a session for that day.' };
+  spec.source = isTestDay ? 'quick_review' : 'manual_extra';
+  return { ok: true, spec, isTestDay };
+}
+
+// Create and persist an extra session. opts.minutes optionally overrides the
+// suggested duration. Returns { ok, error?, sessionId }.
+export function addExtraSession(testId, dateStr, opts = {}) {
+  const proposal = extraSessionSpec(testId, dateStr);
+  if (!proposal.ok) return { ok: false, error: proposal.error };
+  const { spec } = proposal;
+  const t = findTest(testId);
+
+  let minutes = spec.minutes;
+  if (opts.minutes != null && String(opts.minutes).trim() !== '') {
+    const n = num(opts.minutes, minutes);
+    if (Number.isFinite(n) && n > 0) minutes = clamp(Math.round(n), 5, 180);
+  }
+
+  const id = uid();
+  state.school.sessions.push({
+    id,
+    testId,
+    subjectId: t.subjectId,
+    date: dateStr,
+    sessionType: spec.sessionType,
+    minutes,
+    status: 'planned',
+    source: spec.source,
+    addedManually: true,
+    reason: spec.reason,
+    targetTopics: spec.targetTopics,
+    promptTemplateId: spec.sessionType,
+    resultId: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  });
+  saveSchool();
+  return { ok: true, sessionId: id };
 }
 
 export function markSessionDone(id) {

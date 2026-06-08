@@ -16,6 +16,7 @@ export const SESSION_TYPES = [
   { id: 'weak_spots_drill',    label: 'Weak Spots Drill',    short: 'Target specific weak topics',            minutes: 25, scored: true,  expectsResult: true, color: '#fb923c' },
   { id: 'interleaved_practice',label: 'Interleaved Practice',short: 'Tell similar topics apart',              minutes: 30, scored: true,  expectsResult: true, color: '#22d3ee' },
   { id: 'final_review',        label: 'Final Review',        short: 'High-yield check before the test',       minutes: 20, scored: true,  expectsResult: true, color: '#facc15' },
+  { id: 'quick_review',        label: 'Quick Review',        short: '5–10 min break-time review on test day',  minutes: 8,  scored: false, expectsResult: false, color: '#fcd34d' },
 ];
 
 export const SESSION_TYPE_IDS = SESSION_TYPES.map(s => s.id);

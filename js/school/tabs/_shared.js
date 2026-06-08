@@ -5,12 +5,13 @@
 
 import { openModal, closeModal } from '../../ui/modal.js';
 import { showToast } from '../../ui/toast.js';
+import { formatDate, today } from '../../utils/date.js';
 import { esc, copyToClipboard } from '../util.js';
 import { sessionType, isScored } from '../sessionTypes.js';
 import {
   findSession, findTest, decorateTest, subjectName, subjectColor,
   promptForSession, markSessionDone, skipSession, addResultFromText,
-  getTests,
+  getTests, extraSessionSpec, addExtraSession,
 } from '../store.js';
 
 export const RISK_LABEL = { low: 'Low risk', medium: 'Medium risk', high: 'High risk' };
@@ -61,6 +62,8 @@ export function sessionCardHtml(session, { showDate = false } = {}) {
       <div class="school-card-meta">
         ${showDate ? `<span class="school-pill">${esc(session.date)}</span>` : ''}
         ${duPill}${riskPill}
+        ${session.source === 'manual_extra' ? '<span class="school-pill extra">Extra</span>' : ''}
+        ${session.source === 'quick_review' ? '<span class="school-pill extra">Quick review</span>' : ''}
         ${done ? '<span class="school-pill ok">done</span>' : ''}${skipped ? '<span class="school-pill">skipped</span>' : ''}
       </div>
       ${session.reason ? `<div class="school-reason">${esc(session.reason)}</div>` : ''}
@@ -134,6 +137,84 @@ END_APP_RESULT"></textarea>
     closeModal();
     const linked = r.testId ? '' : ' (not linked to a test)';
     showToast('Result imported' + linked, 'success');
+    if (onDone) onDone();
+  });
+}
+
+function prettyWhen(dateStr) {
+  const todayStr = formatDate(today());
+  if (dateStr === todayStr) return 'Today';
+  if (dateStr === formatDate(new Date(today().getTime() + 86400000))) return 'Tomorrow';
+  return dateStr;
+}
+
+// "Add extra session" modal. opts: { date?, onDone }. The app chooses the best
+// session type itself; the user only picks the test, the day and (optionally)
+// minutes, and sees a live preview before confirming.
+export function openAddSessionModal({ date = null, onDone } = {}) {
+  const active = getTests('active');
+  if (!active.length) {
+    openModal(`<p class="school-modal-help">Add a test first — then you can add extra study sessions to any day.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-primary" id="add-ok">OK</button></div>`, 'Add session');
+    document.getElementById('add-ok').addEventListener('click', closeModal);
+    return;
+  }
+
+  const todayStr = formatDate(today());
+  const dateStr = date && date >= todayStr ? date : todayStr;
+  const opts = active.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · ${esc(subjectName(t.subjectId))}</option>`).join('');
+
+  openModal(`
+    <p class="school-modal-help">Add an extra study session. The app picks the best science-based session type for you.</p>
+    <div class="form-group"><label class="form-label">Day</label>
+      <input class="form-input" id="add-date" type="date" value="${esc(dateStr)}" min="${esc(todayStr)}"></div>
+    <div class="form-group"><label class="form-label">Test</label>
+      <select class="form-input" id="add-test">${opts}</select></div>
+    <div class="form-group"><label class="form-label">Minutes (optional)</label>
+      <input class="form-input" id="add-min" type="number" inputmode="numeric" min="5" max="180" placeholder="suggested"></div>
+    <div id="add-preview" class="school-add-preview"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="add-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="add-confirm">Add session</button>
+    </div>`, 'Add session');
+
+  const dateEl = document.getElementById('add-date');
+  const testEl = document.getElementById('add-test');
+  const minEl = document.getElementById('add-min');
+  const preview = document.getElementById('add-preview');
+  const confirmBtn = document.getElementById('add-confirm');
+
+  function renderPreview() {
+    const r = extraSessionSpec(testEl.value, dateEl.value);
+    if (!r.ok) {
+      preview.innerHTML = `<div class="school-add-err">${esc(r.error)}</div>`;
+      confirmBtn.disabled = true;
+      minEl.placeholder = 'suggested';
+      return;
+    }
+    confirmBtn.disabled = false;
+    const st = sessionType(r.spec.sessionType);
+    minEl.placeholder = String(r.spec.minutes);
+    const targets = (r.spec.targetTopics || []).slice(0, 4).join(', ');
+    preview.innerHTML = `
+      <div class="school-add-row"><span class="school-add-label">Session</span><span class="school-stype" style="color:${st.color}">${esc(st.label)}</span></div>
+      <div class="school-add-row"><span class="school-add-label">When</span><span>${esc(prettyWhen(dateEl.value))}</span></div>
+      <div class="school-add-row"><span class="school-add-label">Suggested</span><span>${r.spec.minutes} min</span></div>
+      ${r.isTestDay ? `<div class="school-add-note">Normal sessions aren't planned on test day — this adds a short 5–10 min quick review instead.</div>` : ''}
+      ${r.spec.reason ? `<div class="school-add-reason">${esc(r.spec.reason)}</div>` : ''}
+      ${targets ? `<div class="school-targets">Targets: ${esc(targets)}</div>` : ''}`;
+  }
+
+  dateEl.addEventListener('change', renderPreview);
+  testEl.addEventListener('change', renderPreview);
+  renderPreview();
+
+  document.getElementById('add-cancel').addEventListener('click', closeModal);
+  confirmBtn.addEventListener('click', () => {
+    const r = addExtraSession(testEl.value, dateEl.value, { minutes: minEl.value });
+    if (!r.ok) { showToast(r.error || 'Could not add session', 'error'); return; }
+    closeModal();
+    showToast('Extra session added', 'success');
     if (onDone) onDone();
   });
 }

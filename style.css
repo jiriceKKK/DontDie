@@ -2701,8 +2701,35 @@ body[data-mode="school"] {
 
 /* Plan day headers */
 .school-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.school-day-head-right { display: inline-flex; align-items: center; gap: 8px; }
 .school-day-min { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
 .school-overdue-title { color: #f87171; }
+
+/* Add-session: subtle plus button on each day + a top entry point */
+.school-add-day {
+  width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%;
+  background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); font-size: 17px; line-height: 1; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.school-add-day:active { background: var(--bg-card); color: var(--accent); }
+.school-add-top {
+  width: 100%; margin-bottom: 14px; padding: 10px; border-radius: var(--radius-card);
+  background: transparent; border: 1px dashed var(--border-subtle);
+  color: var(--text-secondary); font-size: 13px; font-weight: 500;
+}
+.school-add-top:active { background: var(--bg-elevated); color: var(--accent); }
+
+/* "Extra"/"Quick review" chip on manually-added sessions */
+.school-pill.extra { background: rgba(56,189,248,0.16); color: var(--accent); border-color: transparent; }
+
+/* Add-session modal preview */
+.school-add-preview { margin: 4px 0 12px; }
+.school-add-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-primary); padding: 3px 0; }
+.school-add-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.school-add-reason { font-size: 13px; color: var(--text-secondary); margin-top: 6px; line-height: 1.4; }
+.school-add-note { font-size: 12px; color: #f59e0b; margin-top: 8px; line-height: 1.4; }
+.school-add-err { font-size: 13px; color: #f87171; padding: 8px 0; }
 
 /* Results page */
 .school-result-test { padding: 12px 14px; margin-bottom: 10px; }
