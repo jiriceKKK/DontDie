@@ -12,11 +12,12 @@ const rng = t => `${r1(t.lo)}–${r1(t.hi)}`;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = n => (n >= 0 ? '+' : '') + r1(n);
 
-// Selected chart segment (index of the segment between curve[i] and curve[i+1]).
-// Module-scoped session state: reset on every full dashboard re-render (view
-// toggle, navigation, data/date change) and never persisted. `_ctx` carries the
-// data the detail card needs so a tap doesn't rebuild the whole chart.
-let _selectedSeg = null;
+// Selected chart BLOCK (index into curve). One block = one point at the block's
+// centre time, so the selection always lines up with the visible peak and the
+// tooltip's time range. Module-scoped session state: reset on every full
+// dashboard re-render (view toggle, navigation, data/date change) and never
+// persisted. `_ctx` carries what a tap needs so it doesn't rebuild the chart.
+let _selectedBlock = null;
 let _ctx = null;
 
 // Two dashboard views. The toggle swaps which metric is the main chart; the
@@ -51,9 +52,12 @@ const VIEWS = {
 
 const CHART_W = 320, CHART_H = 168;
 
-// SVG: subtle target band + dashed baseline + today's per-block curve, all in
-// one Y domain (curve loads + baseline + band + 0) so a small today curve always
-// stays visually below a larger baseline/target. `band` is per-block {lo, hi}.
+// SVG: subtle target band + dashed baseline + today's curve. Each time block is
+// ONE point on a real time axis, placed at the block's CENTRE time — so a value
+// logged in 11:00–13:00 peaks around 12:00 (between the 11 and 13 ticks) instead
+// of sitting on the 11:00 boundary. Whole-block vertical hit columns make every
+// tap map to exactly the block under the finger. One shared Y domain (loads +
+// baseline + band + 0) keeps a small curve visually below a larger target.
 function chartSvg(curve, basePerBlock, color, band) {
   const W = CHART_W, H = CHART_H, padL = 8, padR = 8, padT = 14, padB = 22;
   const n = curve.length || 1;
@@ -65,14 +69,27 @@ function chartSvg(curve, basePerBlock, color, band) {
   if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1; }
   if (yMax - yMin < 1) { yMax += 0.5; yMin -= 0.5; }
   const pad = (yMax - yMin) * 0.15; yMin -= pad; yMax += pad;
-  const x = i => padL + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+
+  // Real time axis from the first block's start to the last block's end; each
+  // block's point is at its midpoint time, so points sit INSIDE their blocks.
+  const startT = curve[0] ? curve[0].startMin : 0;
+  const endT = curve[n - 1] ? curve[n - 1].endMin : startT + 60;
+  const spanT = Math.max(1, endT - startT);
+  const xT = t => padL + ((t - startT) / spanT) * innerW;
+  const cx = b => xT((b.startMin + b.endMin) / 2);
   const y = v => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH;
 
   const zeroY = y(0), baseY = y(basePerBlock);
-  const pts = curve.map((c, i) => `${x(i)},${y(c.load)}`).join(' ');
-  const dots = curve.map((c, i) => `<circle cx="${x(i)}" cy="${y(c.load)}" r="3" fill="${color}"/>`).join('');
-  const labels = curve.map((c, i) => (i % 2 === 0)
-    ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text-muted)" font-family="'DM Mono',monospace">${c.label.slice(0, 5)}</text>` : '').join('');
+  const PX = curve.map(cx), PY = curve.map(c => y(c.load));
+  const pts = curve.map((c, i) => `${PX[i]},${PY[i]}`).join(' ');
+  const dots = curve.map((c, i) => `<circle cx="${PX[i]}" cy="${PY[i]}" r="3" fill="${color}"/>`).join('');
+
+  // Range labels ("07–09") centred under their points, thinned so the axis stays
+  // clean for any block count.
+  const step = Math.max(1, Math.round(n / 5));
+  const hh = m => String(Math.floor(m / 60)).padStart(2, '0');
+  const labels = curve.map((c, i) => (i % step === 0)
+    ? `<text x="${PX[i]}" y="${H - 6}" text-anchor="middle" font-size="9" fill="var(--text-muted)" font-family="'DM Mono',monospace">${hh(c.startMin)}–${hh(c.endMin)}</text>` : '').join('');
 
   // Target band drawn first (behind everything), kept subtle.
   let bandSvg = '';
@@ -83,33 +100,38 @@ function chartSvg(curve, basePerBlock, color, band) {
       <line x1="${padL}" y1="${yHi}" x2="${W - padR}" y2="${yHi}" stroke="${color}" stroke-width="1" opacity="0.3"/>`;
   }
 
-  // Invisible fat hitboxes over each line segment (between consecutive points),
-  // drawn LAST so they sit on top. pointer-events:stroke (set in CSS) means only
-  // the ~26-unit-wide transparent stroke is tappable — easy on mobile without
-  // thickening the visible 2.5-wide line. data-seg = index of the start point.
+  // Selected-block COLUMN highlight (behind the line); coords set on tap.
+  const colHl = `<rect id="stim-blk-hl" class="stim-blk-hl" x="0" y="${padT}" width="0" height="${innerH}" fill="${color}" style="opacity:0"/>`;
+
+  // Whole-block vertical hit columns, drawn LAST so they sit on top. Tapping
+  // anywhere in a block's column selects THAT block — large and unambiguous on
+  // mobile. data-px/data-py carry the block's point so the popup anchors to the
+  // peak it describes.
   let hits = '';
-  for (let i = 0; i < curve.length - 1; i++) {
-    hits += `<line class="stim-seg-hit" data-seg="${i}" x1="${x(i)}" y1="${y(curve[i].load)}" x2="${x(i + 1)}" y2="${y(curve[i + 1].load)}" stroke="transparent" stroke-width="26" stroke-linecap="round"/>`;
+  for (let i = 0; i < curve.length; i++) {
+    const hx = xT(curve[i].startMin);
+    const hw = Math.max(1, xT(curve[i].endMin) - hx);
+    hits += `<rect class="stim-blk-hit" data-block="${i}" data-px="${PX[i]}" data-py="${PY[i]}" x="${hx}" y="${padT}" width="${hw}" height="${innerH}" fill="transparent"/>`;
   }
 
-  // Highlight overlay for the selected segment (coords/colour set by showPopup).
-  // Hidden until a segment is tapped; pointer-events:none so it never blocks taps.
-  const highlight = `<line id="stim-seg-hl" class="stim-seg-hl" x1="0" y1="0" x2="0" y2="0" stroke="transparent" stroke-width="0" stroke-linecap="round" style="opacity:0"/>`;
+  // Selected-POINT marker (on top); coords set on tap.
+  const ptHl = `<circle id="stim-seg-hl" class="stim-seg-hl" cx="0" cy="0" r="0" fill="${color}" style="opacity:0"/>`;
 
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
     ${bandSvg}
+    ${colHl}
     <line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--border-subtle)" stroke-width="1"/>
     <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>
     <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${highlight}
-    ${dots}${labels}
+    ${dots}
+    ${ptHl}
+    ${labels}
     ${hits}
   </svg>`;
 }
 
-// Compact driver lines for ONE block (the clicked segment's END block only —
-// this is the fix for the old card that listed two blocks). Metric-positive
-// activities first (top 3), then up to 2 recovery items as context.
+// Compact driver lines for ONE block (the tapped block only — never two).
+// Metric-positive activities first (top 3), then up to 2 recovery items.
 const popRow = (name, mins, val, tag) =>
   `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
 
@@ -143,55 +165,53 @@ function cheapBreakdown(date, idx) {
 function hidePopup() {
   const pop = document.getElementById('stim-seg-pop');
   if (pop) { pop.hidden = true; pop.innerHTML = ''; }
-  const hl = document.getElementById('stim-seg-hl');
-  if (hl) { hl.setAttribute('stroke-width', '0'); hl.style.opacity = '0'; hl.style.filter = 'none'; }
+  const pt = document.getElementById('stim-seg-hl');
+  if (pt) { pt.setAttribute('r', '0'); pt.style.opacity = '0'; pt.style.filter = 'none'; }
+  const col = document.getElementById('stim-blk-hl');
+  if (col) { col.setAttribute('width', '0'); col.style.opacity = '0'; }
 }
 
-// Floating tooltip over the chart for segment N (point N → point N+1). It
-// describes ONLY this segment, labelled by its END block, positioned near the
-// segment's midpoint and clamped inside the plot. Reads the tapped hitbox's own
-// x1/y1/x2/y2 (viewBox coords) so no chart math is duplicated.
+// Floating tooltip over the chart for ONE block. It describes only that block,
+// labelled by its full time range, anchored at the block's own point (the peak)
+// and clamped inside the plot. Highlights the block's column + its point so the
+// visible selection always matches the tooltip's time range. Reads the tapped
+// column's data-px/data-py/x/width (viewBox coords) — no chart math duplicated.
 function showPopup(hitEl) {
   if (!_ctx) return;
   const pop = document.getElementById('stim-seg-pop');
-  const hl = document.getElementById('stim-seg-hl');
-  if (!pop || !hl) return;
+  const pt = document.getElementById('stim-seg-hl');
+  const col = document.getElementById('stim-blk-hl');
+  if (!pop || !pt || !col) return;
 
-  const i = parseInt(hitEl.dataset.seg, 10);
+  const i = parseInt(hitEl.dataset.block, 10);
   const { curve, metric, color, shortName, date } = _ctx;
-  const A = curve[i], B = curve[i + 1];
-  if (!A || !B) return;
+  const B = curve[i];
+  if (!B) return;
 
-  const x1 = parseFloat(hitEl.getAttribute('x1')), y1 = parseFloat(hitEl.getAttribute('y1'));
-  const x2 = parseFloat(hitEl.getAttribute('x2')), y2 = parseFloat(hitEl.getAttribute('y2'));
+  const px = parseFloat(hitEl.dataset.px), py = parseFloat(hitEl.dataset.py);
+  const hx = parseFloat(hitEl.getAttribute('x')), hw = parseFloat(hitEl.getAttribute('width'));
 
-  // Highlight the exact tapped segment: brighter, thicker, glowing.
-  hl.setAttribute('x1', x1); hl.setAttribute('y1', y1);
-  hl.setAttribute('x2', x2); hl.setAttribute('y2', y2);
-  hl.setAttribute('stroke', color); hl.setAttribute('stroke-width', '5');
-  hl.style.opacity = '1'; hl.style.filter = `drop-shadow(0 0 3px ${color})`;
-
-  const delta = B.load - A.load;
-  const flat = Math.abs(delta) < 0.05;
-  const word = flat ? 'Stable' : delta > 0 ? 'Increase' : 'Drop';
-  const arrow = flat ? '→' : delta > 0 ? '↑' : '↓';
+  // Highlight the block's column (behind the line) + its point (on top, glowing).
+  col.setAttribute('x', hx); col.setAttribute('width', hw);
+  col.setAttribute('fill', color); col.style.opacity = '0.12';
+  pt.setAttribute('cx', px); pt.setAttribute('cy', py);
+  pt.setAttribute('fill', color); pt.setAttribute('r', '5');
+  pt.style.opacity = '1'; pt.style.filter = `drop-shadow(0 0 3px ${color})`;
 
   const body = metric === 'cheap' ? cheapBreakdown(date, B.index) : driversCompact(date, B.index, metric);
   pop.innerHTML = `
     <button class="stim-pop-close" id="stim-seg-close" aria-label="Close">✕</button>
     <div class="stim-pop-range">${esc(B.label)}</div>
-    <div class="stim-pop-metric" style="color:${color}">${shortName} ${signed(delta)} <span class="stim-pop-dir">${arrow} ${word}</span></div>
-    <div class="stim-pop-change">${r1(A.load)} → ${r1(B.load)}</div>
+    <div class="stim-pop-metric" style="color:${color}">${shortName} ${r1(B.load)}</div>
     ${body}`;
   pop.hidden = false;
 
-  // Position near the segment midpoint; clamp horizontally, flip below if the
-  // point sits high in the plot so the tooltip never leaves the top.
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  // Anchor at the block's point; clamp horizontally, flip below if the point sits
+  // high in the plot so the tooltip never leaves the top.
   pop.style.marginLeft = '';
-  pop.style.left = Math.min(82, Math.max(18, (mx / CHART_W) * 100)) + '%';
-  pop.style.top = ((my / CHART_H) * 100) + '%';
-  pop.dataset.place = (my / CHART_H) < 0.42 ? 'below' : 'above';
+  pop.style.left = Math.min(82, Math.max(18, (px / CHART_W) * 100)) + '%';
+  pop.style.top = ((py / CHART_H) * 100) + '%';
+  pop.dataset.place = (py / CHART_H) < 0.42 ? 'below' : 'above';
 
   // After layout, nudge horizontally so the tooltip never spills off-screen.
   requestAnimationFrame(() => {
@@ -204,25 +224,25 @@ function showPopup(hitEl) {
   });
 }
 
-function selectSegment(hitEl) {
-  const i = parseInt(hitEl.dataset.seg, 10);
-  if (_selectedSeg === i) { _selectedSeg = null; hidePopup(); return; } // tap same → close
-  _selectedSeg = i;
+function selectBlock(hitEl) {
+  const i = parseInt(hitEl.dataset.block, 10);
+  if (_selectedBlock === i) { _selectedBlock = null; hidePopup(); return; } // tap same → close
+  _selectedBlock = i;
   showPopup(hitEl);
 }
 
 // Delegated tap handling, bound once per panel element (survives innerHTML
 // rewrites; re-binds if the mode controller rebuilds the panel). Handles:
-// segment tap → select/toggle, ✕ → close, tap outside chart/popup → close.
+// block tap → select/toggle, ✕ → close, tap outside chart/popup → close.
 function bindSegmentTaps(panel) {
   if (panel.dataset.stimSegBound) return;
   panel.dataset.stimSegBound = '1';
   panel.addEventListener('click', (e) => {
-    const hit = e.target.closest('[data-seg]');
-    if (hit) { selectSegment(hit); return; }
-    if (e.target.closest('#stim-seg-close')) { _selectedSeg = null; hidePopup(); return; }
-    if (_selectedSeg !== null && !e.target.closest('#stim-seg-pop') && !e.target.closest('.stim-chart-plot')) {
-      _selectedSeg = null; hidePopup();
+    const hit = e.target.closest('[data-block]');
+    if (hit) { selectBlock(hit); return; }
+    if (e.target.closest('#stim-seg-close')) { _selectedBlock = null; hidePopup(); return; }
+    if (_selectedBlock !== null && !e.target.closest('#stim-seg-pop') && !e.target.closest('.stim-chart-plot')) {
+      _selectedBlock = null; hidePopup();
     }
   });
 }
@@ -262,8 +282,8 @@ export function renderStimDashboard() {
   const header = `<div class="mh-header"><div class="mh-title">Dashboard</div><div class="mh-subtitle">Estimated from logged activities · not a medical measurement</div></div>`;
   const seg = segmentedControl(view);
 
-  // A full re-render resets the chart-segment selection (view/data/date change).
-  _selectedSeg = null;
+  // A full re-render resets the chart-block selection (view/data/date change).
+  _selectedBlock = null;
   _ctx = null;
 
   bindSegmentTaps(panel);
