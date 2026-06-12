@@ -4,6 +4,7 @@ import { state } from '../../state.js';
 import {
   metricCurve, baselineMetricPerBlock, baselineMetricDaily,
   dailyMetric, hasAnyEntries, metricTarget, targetStatus, blockDrivers,
+  blockMetric, dailyGrossCheap,
 } from '../store.js';
 
 const r1 = n => Math.round(n * 10) / 10;
@@ -109,16 +110,34 @@ function chartSvg(curve, basePerBlock, color, band) {
 // Compact driver lines for ONE block (the clicked segment's END block only —
 // this is the fix for the old card that listed two blocks). Metric-positive
 // activities first (top 3), then up to 2 recovery items as context.
+const popRow = (name, mins, val, tag) =>
+  `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
+
+// Productive popup: top productive drivers (and recovery as context).
 function driversCompact(date, idx, metric) {
   const ds = blockDrivers(date, idx);
   const main = ds.filter(d => d[metric] > 1e-9).sort((a, b) => b[metric] - a[metric]).slice(0, 3);
   const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 2);
-  const noun = metric === 'cheap' ? 'cheap-stim' : 'productive';
-  if (!main.length && !rec.length) return `<div class="stim-pop-none">No ${noun} drivers</div>`;
-  const row = (name, mins, val, tag) =>
-    `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
-  return main.map(d => row(d.name, d.minutes, d[metric], '')).join('')
-    + rec.map(d => row(d.name, d.minutes, d.recovery, 'rec')).join('');
+  if (!main.length && !rec.length) return `<div class="stim-pop-none">No productive drivers</div>`;
+  return main.map(d => popRow(d.name, d.minutes, d[metric], '')).join('')
+    + rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
+}
+
+// Cheap popup: gross cheap drivers, recovery activities, then the NET cheap for
+// the block — so the popup shows exactly how recovery offsets gross into net.
+function cheapBreakdown(date, idx) {
+  const ds = blockDrivers(date, idx);
+  const gross = ds.filter(d => d.cheap > 1e-9).sort((a, b) => b.cheap - a.cheap).slice(0, 3);
+  const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 3);
+  const net = blockMetric(date, idx, 'cheap');
+  let html = `<div class="stim-pop-section">Gross cheap stim</div>`;
+  html += gross.length ? gross.map(d => popRow(d.name, d.minutes, d.cheap, '')).join('') : `<div class="stim-pop-none">None</div>`;
+  if (rec.length) {
+    html += `<div class="stim-pop-section">Recovery</div>`;
+    html += rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
+  }
+  html += `<div class="stim-pop-net">Net cheap stim<span>${r1(net)}</span></div>`;
+  return html;
 }
 
 function hidePopup() {
@@ -157,12 +176,13 @@ function showPopup(hitEl) {
   const word = flat ? 'Stable' : delta > 0 ? 'Increase' : 'Drop';
   const arrow = flat ? '→' : delta > 0 ? '↑' : '↓';
 
+  const body = metric === 'cheap' ? cheapBreakdown(date, B.index) : driversCompact(date, B.index, metric);
   pop.innerHTML = `
     <button class="stim-pop-close" id="stim-seg-close" aria-label="Close">✕</button>
     <div class="stim-pop-range">${esc(B.label)}</div>
     <div class="stim-pop-metric" style="color:${color}">${shortName} ${signed(delta)} <span class="stim-pop-dir">${arrow} ${word}</span></div>
     <div class="stim-pop-change">${r1(A.load)} → ${r1(B.load)}</div>
-    ${driversCompact(date, B.index, metric)}`;
+    ${body}`;
   pop.hidden = false;
 
   // Position near the segment midpoint; clamp horizontally, flip below if the
@@ -292,7 +312,9 @@ export function renderStimDashboard() {
   // Summary (factual; no advice/diagnosis): today vs target, then vs baseline.
   let summary;
   if (Math.abs(todayLoad) < 1e-9) {
-    summary = cfg.emptyLine;
+    summary = (view === 'cheap' && dailyGrossCheap(date) > 1e-9)
+      ? 'Your cheap stim today was fully offset by recovery activities.'
+      : cfg.emptyLine;
   } else {
     const tSentence = view === 'cheap'
       ? (tStatus === 'within' ? 'Today is within your cheap-stim target range.'

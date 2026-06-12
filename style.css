@@ -2555,6 +2555,9 @@ body[data-mode="stimulation"] {
 .stim-pop-dn { font-size: 12px; color: var(--text-primary); }
 .stim-pop-dv { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); white-space: nowrap; }
 .stim-pop-none { font-size: 11px; color: var(--text-muted); }
+.stim-pop-section { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 6px 0 2px; }
+.stim-pop-net { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-secondary); }
+.stim-pop-net span { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .stim-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
 .stim-key-curve { border-top-color: var(--accent); }
 .stim-key-base { border-top-color: var(--text-muted); border-top-style: dashed; }
