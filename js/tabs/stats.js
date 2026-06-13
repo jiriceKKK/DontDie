@@ -5,8 +5,31 @@ import {
   getHabitsForDate, getLogsForDate, isCompleted,
   computeStreak, computeLongestStreak, computeHabitStreak,
   getWeeklyStats, getHabitWeeklyData,
+  getAllActiveHabits, isScheduledOn, scheduleOf,
 } from '../habits.js';
 import { openModal } from '../ui/modal.js';
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const DOW2 = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+function schedText(habit) {
+  const s = scheduleOf(habit);
+  if (s.type === 'daily') return 'Every day';
+  if (s.type === 'interval') return `Every ${Math.max(1, Math.round(Number(s.everyN) || 1))} days`;
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const days = (s.days || []).slice().sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return days.length === 7 ? 'Every day' : days.map(d => DOW2[d]).join(' ') || '—';
+}
+// Completion over [from, from+span) days ago, schedule-aware: { sched, done, rate }.
+function windowRate(habit, from, span) {
+  let sched = 0, done = 0;
+  for (let i = from; i < from + span; i++) {
+    const d = addDays(today(), -i);
+    if (!isScheduledOn(habit, d)) continue;
+    sched++;
+    if (isCompleted(formatDate(d), habit.id)) done++;
+  }
+  return { sched, done, rate: sched > 0 ? Math.round((done / sched) * 100) : null };
+}
 
 export function renderStats() {
   const panel = document.getElementById('tab-stats');
@@ -165,34 +188,36 @@ function renderHeatmapSVG(numWeeks) {
 }
 
 function renderStatsActivity(container) {
-  const allHabits = [
-    ...BUILT_IN_HABITS.filter(h => !state.hiddenBuiltins.has(h.id)),
-    ...state.customHabits.filter(h => h.active).map(c => ({
-      id: c.id, name: c.name, days: c.days, category: 'custom', color: c.color,
-    })),
-  ];
+  const allHabits = getAllActiveHabits();
 
   const rows = allHabits.map(habit => {
-    let scheduled = 0, completed = 0;
-    for (let i = 0; i < 30; i++) {
-      const d = addDays(today(), -i);
-      if (!habit.days.includes(d.getDay())) continue;
-      scheduled++;
-      if (isCompleted(formatDate(d), habit.id)) completed++;
-    }
-    const rate  = scheduled > 0 ? Math.round((completed / scheduled) * 100) : null;
+    const cur = windowRate(habit, 0, 30);
+    const prev = windowRate(habit, 30, 30);
+    const rate = cur.rate;
     const color = habit.color || CATEGORY_COLORS[habit.category] || 'var(--accent)';
-
+    const chip = rate == null ? '<span class="stat-chip muted">no data</span>'
+      : rate >= 80 ? '<span class="stat-chip good">strong</span>'
+      : rate >= 50 ? '<span class="stat-chip">steady</span>'
+      : '<span class="stat-chip warn">low</span>';
+    let trend = '';
+    if (rate != null && prev.rate != null) {
+      const d = rate - prev.rate;
+      if (d >= 8) trend = '<span class="activity-trend up">▲</span>';
+      else if (d <= -8) trend = '<span class="activity-trend down">▼</span>';
+    }
     return `
       <div class="activity-habit-row" data-habit="${habit.id}">
         <div class="cat-dot" style="background:${color}"></div>
-        <div class="activity-habit-name">${habit.name}</div>
-        <div class="activity-habit-rate">${rate !== null ? rate + '%' : '—'}</div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    `;
+        <div class="activity-habit-body">
+          <div class="activity-habit-top">
+            <span class="activity-habit-name">${esc(habit.name)}</span>
+            <span class="activity-habit-rate">${rate !== null ? rate + '%' : '—'} ${trend}</span>
+          </div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:${rate || 0}%;background:${color}"></div></div>
+          <div class="activity-habit-meta"><span>${esc(schedText(habit))}</span>${chip}</div>
+        </div>
+        <svg class="activity-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>`;
   }).join('');
 
   container.innerHTML = `<div class="activity-habit-list">${rows || '<p style="color:var(--text-muted);padding:16px;">No habits yet.</p>'}</div>`;
@@ -211,7 +236,7 @@ function openActivityDetail(habit) {
   let sched30 = 0, done30 = 0, missedMonth = 0;
   for (let i = 0; i < 30; i++) {
     const d = addDays(today(), -i);
-    if (!habit.days.includes(d.getDay())) continue;
+    if (!isScheduledOn(habit, d)) continue;
     sched30++;
     if (isCompleted(formatDate(d), habit.id)) done30++;
     else missedMonth++;
@@ -265,23 +290,11 @@ function renderStatsInsights(container) {
 
 function generateInsights() {
   const insights   = [];
-  const allHabits  = [
-    ...BUILT_IN_HABITS.filter(h => !state.hiddenBuiltins.has(h.id)),
-    ...state.customHabits.filter(h => h.active).map(c => ({
-      id: c.id, name: c.name, days: c.days, category: 'custom',
-    })),
-  ];
+  const allHabits  = getAllActiveHabits();
 
   const habitStats = allHabits.map(habit => {
-    let sched = 0, done = 0;
-    for (let i = 0; i < 30; i++) {
-      const d = addDays(today(), -i);
-      if (!habit.days.includes(d.getDay())) continue;
-      sched++;
-      if (isCompleted(formatDate(d), habit.id)) done++;
-    }
-    const rate = sched > 0 ? Math.round((done / sched) * 100) : null;
-    return { habit, sched, done, rate };
+    const w = windowRate(habit, 0, 30);
+    return { habit, sched: w.sched, done: w.done, rate: w.rate };
   }).filter(s => s.rate !== null);
 
   const sorted = [...habitStats].sort((a, b) => Math.abs(b.rate - 50) - Math.abs(a.rate - 50));

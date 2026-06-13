@@ -22,6 +22,7 @@ export const state = {
   split: null,         // the editable split plan (loaded by js/split/store.js)
   customHabits: [],
   hiddenBuiltins: new Set(),
+  habitConfig: null,   // built-in overrides + custom meta (loaded by js/habitConfig.js)
   logsByDate: {},      // { "2024-05-20": { "gym_push_a": true, ... } }
   pendingQueue: [],    // offline queue
   isOnline: true,

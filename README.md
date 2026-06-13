@@ -240,12 +240,21 @@ CREATE TABLE school_store (
   CONSTRAINT school_store_singleton CHECK (id = 1)
 );
 
+-- Built-in habit overrides + custom-habit meta (tags, schedule, category).
+CREATE TABLE habit_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT habit_config_singleton CHECK (id = 1)
+);
+
 ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stimulation_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_store ENABLE ROW LEVEL SECURITY;
+ALTER TABLE habit_config ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
@@ -253,11 +262,15 @@ CREATE POLICY "Allow all anon" ON split_config FOR ALL TO anon USING (true) WITH
 CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON stimulation_store FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON school_store FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON habit_config FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
-> The `split_config`, `mh_store`, `stimulation_store` and `school_store` tables
-> are optional. Without them those features still work fully from `localStorage`
-> — they just won't sync across devices until the tables exist.
+> The `split_config`, `mh_store`, `stimulation_store`, `school_store` and
+> `habit_config` tables are optional. Without them those features still work
+> fully from `localStorage` — they just won't sync across devices until the
+> tables exist. Built-in habit edits, custom-habit tags and every-N-day
+> schedules live in `habit_config`; the habit IDs never change, so your existing
+> `habit_logs` always keep mapping to the right habit.
 
 ### 4 — Fill in `js/config.js`
 

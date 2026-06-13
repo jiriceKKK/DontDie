@@ -279,6 +279,42 @@ export async function dbSaveSchoolStore(schoolData) {
   }
 }
 
+// ---- habit config (single-row JSON document) ------------------------------
+// Holds built-in habit overrides + custom-habit extra meta (tags, schedule,
+// category). Same graceful pattern as split_config: returns null if the table
+// is absent, so the app falls back to the localStorage copy without breaking.
+// Optional table (run the SQL in README to enable cloud sync).
+export async function dbGetHabitConfig() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('habit_config')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getHabitConfig:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveHabitConfig(cfg) {
+  try {
+    const { error } = await getSupabase()
+      .from('habit_config')
+      .upsert(
+        { id: 1, data: cfg, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveHabitConfig:', err);
+    return { error: err };
+  }
+}
+
 export async function dbExportAll() {
   try {
     const [logsRes, habitsRes] = await Promise.all([

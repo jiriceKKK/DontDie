@@ -9,6 +9,8 @@ import { state } from '../state.js';
 import { MODES, getMode } from './registry.js';
 import { registerRenders, switchTab } from '../navigation.js';
 import { openModal, closeModal } from '../ui/modal.js';
+import { goTo } from './go.js';
+import { showToast } from '../ui/toast.js';
 
 // Visible fallback so a single broken page never blanks the whole app.
 function errorCard(label, err) {
@@ -20,10 +22,13 @@ function errorCard(label, err) {
 }
 
 export function initModes() {
-  // Mode switcher button.
+  // Mode switcher button (top-left) — tap opens the picker, hold goes Home.
   const switcher = document.getElementById('mode-switcher');
-  if (switcher) switcher.addEventListener('click', openModeMenu);
+  if (switcher) wireSwitcher(switcher);
   else console.error('[modes] #mode-switcher not found — mode switching disabled');
+
+  // Thumb-reachable floating switcher (bottom): same tap/hold behaviour.
+  ensureModeFab();
 
   // Delegated tab clicks. The nav containers persist across mode rebuilds, so
   // attaching here once (rather than per generated button) never stacks.
@@ -61,6 +66,8 @@ export function setMode(modeId) {
   document.body.dataset.mode = mode.id;            // drives the accent theme
   const label = document.getElementById('mode-switcher-label');
   if (label) label.textContent = mode.label;
+  const fabLabel = document.getElementById('mode-fab-label');
+  if (fabLabel) fabLabel.textContent = mode.label;
 
   buildNav(mode);
   buildPanels(mode);
@@ -113,6 +120,55 @@ function buildPanels(mode) {
   if (!slider) { console.error('[modes] #tab-slider not found — cannot build panels'); return; }
   slider.innerHTML = mode.tabs.map(t =>
     `<div class="tab-panel" id="tab-${t.id}" data-tab="${t.id}"></div>`).join('');
+}
+
+// ---- mode switcher tap/hold ------------------------------------------------
+// Tap → open the picker. Hold (~520ms) or double-click → jump to Home/Today.
+// The hold is cancelled by movement/scroll, and the click that follows a hold
+// is suppressed so it never also opens the picker.
+let _holdTimer = null, _suppressClick = false, _startX = 0, _startY = 0;
+
+function goHomeFromSwitcher() {
+  _holdTimer = null;
+  _suppressClick = true;
+  if (state.activeModeId === 'home' && state.activeTab === 'today') { showToast('Home', 'default'); return; }
+  goTo('home', 'today');
+  showToast('Home', 'default');
+}
+
+function wireSwitcher(el) {
+  const cancel = () => { if (_holdTimer) { clearTimeout(_holdTimer); _holdTimer = null; } };
+  el.addEventListener('pointerdown', (e) => {
+    _startX = e.clientX; _startY = e.clientY;
+    cancel();
+    _holdTimer = setTimeout(goHomeFromSwitcher, 520);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (_holdTimer && (Math.abs(e.clientX - _startX) > 10 || Math.abs(e.clientY - _startY) > 10)) cancel();
+  });
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('pointerleave', cancel);
+  el.addEventListener('pointercancel', cancel);
+  el.addEventListener('click', (e) => {
+    if (_suppressClick) { _suppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
+    openModeMenu();
+  });
+  el.addEventListener('dblclick', (e) => { e.preventDefault(); _suppressClick = true; goTo('home', 'today'); });
+}
+
+function ensureModeFab() {
+  if (document.getElementById('mode-fab')) return;
+  const fab = document.createElement('button');
+  fab.id = 'mode-fab';
+  fab.className = 'mode-fab';
+  fab.setAttribute('aria-label', 'Switch section · hold for Home');
+  fab.innerHTML = `<span class="mode-fab-dot"></span><span class="mode-fab-label" id="mode-fab-label">${getMode(state.activeModeId).label}</span>`;
+  document.body.appendChild(fab);
+  wireSwitcher(fab);
+  if (!localStorage.getItem('seen_fab_hint')) {
+    try { localStorage.setItem('seen_fab_hint', '1'); } catch {}
+    setTimeout(() => showToast('Tip: hold the section pill to jump Home', 'default'), 1800);
+  }
 }
 
 function openModeMenu() {

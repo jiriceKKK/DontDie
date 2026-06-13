@@ -3,7 +3,9 @@ import { formatDate, today, getNDaysAgo } from './utils/date.js';
 import {
   dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection,
   dbGetSplitConfig, dbGetMentalStore, dbGetStimulationStore, dbGetSchoolStore,
+  dbGetHabitConfig,
 } from './db.js';
+import { initHabitConfig } from './habitConfig.js';
 import { initSplit } from './split/store.js';
 import { initMental } from './mental/store.js';
 import { initStimulation } from './stimulation/store.js';
@@ -38,7 +40,7 @@ async function startApp() {
   const rangeEnd   = formatDate(today());
   const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
 
-  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes] = await Promise.all([
+  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes, habitCfgRes] = await Promise.all([
     dbGetLogsForRange(rangeStart, rangeEnd),
     dbGetCustomHabits(),
     dbCheckConnection(),
@@ -46,12 +48,17 @@ async function startApp() {
     dbGetMentalStore(),
     dbGetStimulationStore(),
     dbGetSchoolStore(),
+    dbGetHabitConfig(),
   ]);
 
   state.logsByDate   = logsRes.data   || {};
   state.customHabits = customRes.data || [];
   state.connectionOk = connRes;
   state.initialized  = true;
+
+  // Built-in overrides + custom-habit meta (cloud → local → empty). Must run
+  // before any habit render so scheduling/labels reflect overrides.
+  initHabitConfig(habitCfgRes.data);
 
   // Seed/load split + mental + stimulation + school data (cloud → local → default).
   initSplit(splitRes.data);
