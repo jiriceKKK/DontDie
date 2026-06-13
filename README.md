@@ -6,16 +6,32 @@ A personal habit tracker and workout log for a structured PPL training split. Ru
 
 ## What it is
 
-A multi-mode health tracker. A **mode switcher** (top-left) flips the whole app
-— its pages, bottom nav, and accent theme — between modes:
+A multi-mode health tracker built around a global **command center** plus
+mode-specific deep pages (a hybrid layout).
+
+**Home** is the default landing area — an action-first daily surface. Its bottom
+nav is global:
+
+- **Today** — the command center: habits (tap to tick), tasks (add/tick inline),
+  a compact Cheap-Stim status + fast block logging, today's study sessions
+  (collapsed cards), training/split summary, and a check-in nudge.
+- **Log** — the full Stimulation logger with a search box + recent activities.
+- **Review** — a data-based weekly review with specific, data-driven reflection
+  questions (no AI calls); links to the AI reflection export in Settings.
+- **Modules** — a launcher into the deep modules below.
+
+A **mode switcher** (top-left) and the Modules page open the deep modules, each
+with its own ordered tabs, accent theme and mobile swipe navigation:
 
 - **Physical Health** (green) — Today · Week · Stats · Split · Settings
 - **Mental Health** (calm blue) — Check-in · Tasks · Journal · Stats
+  (check-in uses anchored scales, a 1–100 sleep score, and an honesty nudge)
 - **Stimulation** (amber) — Dashboard · Log · Activities · Stats · Settings
 - **School** (sky blue) — Today · Plan · Tests · Results · Settings
 
-Each mode has its own ordered tabs and mobile swipe navigation. Adding a future
-mode (Sleep, Nutrition, Focus…) is one entry in `js/modes/registry.js`.
+Adding a future mode (Sleep, Nutrition, Focus…) is one entry in
+`js/modes/registry.js`. The Home pages live in `js/home/`. A network-first
+service worker (`sw.js`) makes new deploys appear on the next reload.
 
 ### Stimulation mode
 
