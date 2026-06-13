@@ -2,7 +2,7 @@
 // All modules share the same reference; mutations are visible everywhere.
 export const state = {
   // ── modes ────────────────────────────────────────────────
-  activeModeId: 'physical',  // which mode is showing
+  activeModeId: 'home',      // which mode is showing (global command center by default)
   modeTabs: [],              // ordered tab ids of the active mode (set by mode controller)
   modeLastTab: {},           // { modeId: lastTabId } — remembers your page per mode
   mental: null,              // mental-health data (loaded by js/mental/store.js)

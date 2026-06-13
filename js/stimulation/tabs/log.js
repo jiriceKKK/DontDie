@@ -7,6 +7,21 @@ import {
 } from '../store.js';
 
 const DURATIONS = [5, 15, 30, 60];
+let _search = ''; // activity search filter (per Log session)
+
+// Most-used activity ids over the last 7 days (read-only), top N.
+function recentIds(n = 8) {
+  const counts = {};
+  const logs = (state.stimulation && state.stimulation.logs) || {};
+  for (let i = 0; i < 7; i++) {
+    const date = formatDate(addDays(today(), -i));
+    const day = logs[date];
+    if (!day || !day.blocks) continue;
+    for (const idx of Object.keys(day.blocks)) for (const e of (day.blocks[idx] || [])) counts[e.activityId] = (counts[e.activityId] || 0) + 1;
+  }
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([id]) => id).filter(id => findActivity(id)).slice(0, n);
+}
+const chipHtml = a => a ? `<button class="stim-chip" data-add="${a.id}" style="border-color:${categoryColor(a.category)}33">${esc(a.name)}</button>` : '';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -35,6 +50,7 @@ export function renderStimLog() {
   if (!state.stimDate || (state.stimDate !== todayStr && state.stimDate !== yestStr)) state.stimDate = todayStr;
 
   if (state.stimDate === todayStr) state.stimBlock = currentBlockIndex(dayBlocks());
+  _search = '';
   draw();
 }
 
@@ -57,6 +73,25 @@ function draw() {
     cat,
     items: activities.filter(a => a.category === cat.id),
   })).filter(g => g.items.length);
+
+  const q = _search.trim().toLowerCase();
+  let pickerHtml;
+  if (q) {
+    const matches = activities.filter(a => a.name.toLowerCase().includes(q)).slice(0, 30);
+    pickerHtml = matches.length
+      ? `<div class="stim-cat-block"><div class="stim-chip-row">${matches.map(chipHtml).join('')}</div></div>`
+      : `<div class="mh-empty" style="text-align:left;padding:6px 0;">No activities match “${esc(_search)}”.</div>`;
+  } else {
+    const recent = recentIds();
+    const recentRow = recent.length
+      ? `<div class="stim-cat-block"><div class="stim-cat-label">Recent</div><div class="stim-chip-row">${recent.map(id => chipHtml(findActivity(id))).join('')}</div></div>`
+      : '';
+    pickerHtml = recentRow + groups.map(g => `
+      <div class="stim-cat-block">
+        <div class="stim-cat-label" style="color:${g.cat.color}">${g.cat.label}</div>
+        <div class="stim-chip-row">${g.items.map(chipHtml).join('')}</div>
+      </div>`).join('');
+  }
 
   panel.innerHTML = `
     <div class="mh-header">
@@ -86,14 +121,17 @@ function draw() {
         </div>`}
     </div>
 
-    ${groups.map(g => `
-      <div class="stim-cat-block">
-        <div class="stim-cat-label" style="color:${g.cat.color}">${g.cat.label}</div>
-        <div class="stim-chip-row">
-          ${g.items.map(a => `<button class="stim-chip" data-add="${a.id}" style="border-color:${g.cat.color}33">${esc(a.name)}</button>`).join('')}
-        </div>
-      </div>`).join('')}
+    <input class="form-input stim-search" id="stim-search" type="text" placeholder="Search activities…" value="${esc(_search)}" autocomplete="off">
+    ${pickerHtml}
   `;
+
+  // search (preserve focus + caret across the redraw)
+  const si = panel.querySelector('#stim-search');
+  if (si) si.addEventListener('input', () => {
+    _search = si.value; const at = si.selectionStart; draw();
+    const ns = document.getElementById('stim-search');
+    if (ns) { ns.focus(); try { ns.setSelectionRange(at, at); } catch {} }
+  });
 
   // date toggle (in-tab action → draw, so it doesn't snap back to "now")
   panel.querySelectorAll('.pill-btn[data-date]').forEach(b => b.addEventListener('click', () => {

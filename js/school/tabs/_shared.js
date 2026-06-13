@@ -22,8 +22,10 @@ function topicLine(arr) {
   return arr.length > 3 ? `${shown} +${arr.length - 3}` : shown;
 }
 
-// One planned/done/skipped session as an action card.
-export function sessionCardHtml(session, { showDate = false } = {}) {
+// One planned/done/skipped session as a card. Collapsible by default
+// (progressive disclosure): the summary line is always visible and the actions
+// live in a body that opens on tap, so Plan / Dashboard / Today stay uncluttered.
+export function sessionCardHtml(session, { showDate = false, collapsible = true } = {}) {
   if (!session) return '';
   const st = sessionType(session.sessionType);
   const test = decorateTest(findTest(session.testId));
@@ -49,26 +51,42 @@ export function sessionCardHtml(session, { showDate = false } = {}) {
          <button class="btn btn-ghost school-btn" data-school-action="skip" data-sid="${session.id}">Skip</button>
        </div>`;
 
+  const metaPills = `
+    ${showDate ? `<span class="school-pill">${esc(session.date)}</span>` : ''}
+    ${duPill}${riskPill}
+    ${session.source === 'manual_extra' ? '<span class="school-pill extra">Extra</span>' : ''}
+    ${session.source === 'quick_review' ? '<span class="school-pill extra">Quick review</span>' : ''}
+    ${done ? '<span class="school-pill ok">done</span>' : ''}${skipped ? '<span class="school-pill">skipped</span>' : ''}`;
+  const detail = `
+    ${session.reason ? `<div class="school-reason">${esc(session.reason)}</div>` : ''}
+    ${topics ? `<div class="school-targets">Targets: ${esc(topics)}</div>` : ''}
+    ${actions}`;
+  const headline = `
+    <span class="school-subject">${esc(subj)}</span>
+    <span class="school-dot">·</span>
+    <span class="school-stype" style="color:${st.color}">${esc(st.label)}</span>`;
+  const cls = `${done ? 'is-done' : ''} ${skipped ? 'is-skipped' : ''}`;
+
+  if (!collapsible) {
+    return `
+    <div class="school-session-card ${cls}" style="--subject-color:${color}">
+      <div class="school-card-top"><div class="school-card-headline">${headline}</div><span class="school-min">${session.minutes}m</span></div>
+      <div class="school-card-meta">${metaPills}</div>
+      ${detail}
+    </div>`;
+  }
+
   return `
-    <div class="school-session-card ${done ? 'is-done' : ''} ${skipped ? 'is-skipped' : ''}" style="--subject-color:${color}">
-      <div class="school-card-top">
-        <div class="school-card-headline">
-          <span class="school-subject">${esc(subj)}</span>
-          <span class="school-dot">·</span>
-          <span class="school-stype" style="color:${st.color}">${esc(st.label)}</span>
-        </div>
+    <div class="school-session-card school-collapsible ${cls}" style="--subject-color:${color}">
+      <button type="button" class="school-card-summary" data-school-toggle="${session.id}" aria-expanded="false">
+        <span class="school-card-sumtext">
+          <span class="school-card-headline">${headline}</span>
+          <span class="school-card-meta">${metaPills}</span>
+        </span>
         <span class="school-min">${session.minutes}m</span>
-      </div>
-      <div class="school-card-meta">
-        ${showDate ? `<span class="school-pill">${esc(session.date)}</span>` : ''}
-        ${duPill}${riskPill}
-        ${session.source === 'manual_extra' ? '<span class="school-pill extra">Extra</span>' : ''}
-        ${session.source === 'quick_review' ? '<span class="school-pill extra">Quick review</span>' : ''}
-        ${done ? '<span class="school-pill ok">done</span>' : ''}${skipped ? '<span class="school-pill">skipped</span>' : ''}
-      </div>
-      ${session.reason ? `<div class="school-reason">${esc(session.reason)}</div>` : ''}
-      ${topics ? `<div class="school-targets">Targets: ${esc(topics)}</div>` : ''}
-      ${actions}
+        <svg class="school-card-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <div class="school-card-body">${detail}</div>
     </div>`;
 }
 
@@ -76,6 +94,13 @@ export function sessionCardHtml(session, { showDate = false } = {}) {
 // called after any state change so the tab refreshes.
 export function bindSchoolActions(container, rerender) {
   container.addEventListener('click', (e) => {
+    // Progressive disclosure: tapping a collapsible card's summary opens it.
+    const tog = e.target.closest('[data-school-toggle]');
+    if (tog) {
+      const card = tog.closest('.school-session-card');
+      if (card) { const open = card.classList.toggle('open'); tog.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+      return;
+    }
     const btn = e.target.closest('[data-school-action]');
     if (!btn) return;
     const sid = btn.dataset.sid;

@@ -35,7 +35,14 @@ export function initModes() {
     });
   });
 
-  setMode(state.activeModeId || 'physical');
+  // Cross-mode jumps from Home pages (and anywhere) without an import cycle.
+  document.addEventListener('app:navigate', (e) => {
+    const { mode, tab } = (e && e.detail) || {};
+    if (mode && mode !== state.activeModeId) setMode(mode);
+    if (tab) switchTab(tab);
+  });
+
+  setMode(state.activeModeId || 'home');
 }
 
 export function setMode(modeId) {
