@@ -162,9 +162,9 @@ const EXPLANATIONS = `## Module explanations
 
 ### Stimulation
 - This is a behaviour-based **estimate**, NOT a dopamine or biological measurement.
-- **Cheap Stim** = fast / counterproductive stimulation (scrolling, short-video, porn, binge content, gaming…). Reported as NET of recovery: net = max(0, gross cheap − 50% of recovery in the same block), so recovery lowers it but never 1:1.
+- **Cheap Stim** = fast / counterproductive stimulation (scrolling, short-video, porn, binge content, gaming…). The daily Cheap Stim Load is NET of recovery: net = max(0, daily gross cheap − 70% of the day's recovery credit), so calming activities anywhere in the day lower it (never 1:1). The per-block timeline shows GROSS cheap (where it happened).
 - **Productive Activation** = useful stimulation/effort (gym, focused study, coding, school work…).
-- **Recovery** = calming activities that partly offset cheap-stim load in the same time block (reading, walks, journaling…).
+- **Recovery** = calming activities (reading, walks, journaling…) that build a whole-day recovery credit which lowers the daily Cheap Stim Load.
 - Values are duration-weighted sums of logged activities placed into time blocks across the day.
 - Baseline = recent average; target range = an estimated practical band. Both are behaviour-based estimates.
 

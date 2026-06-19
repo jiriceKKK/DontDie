@@ -4,7 +4,7 @@ import { state } from '../../state.js';
 import {
   metricCurve, baselineMetricPerBlock, baselineMetricDaily,
   dailyMetric, hasAnyEntries, metricTarget, targetStatus, blockDrivers,
-  blockMetric, dailyGrossCheap,
+  blockMetric, dailyGrossCheap, dailyRecoveryCredit,
 } from '../store.js';
 
 const r1 = n => Math.round(n * 10) / 10;
@@ -145,20 +145,26 @@ function driversCompact(date, idx, metric) {
     + rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
 }
 
-// Cheap popup: gross cheap drivers, recovery activities, then the NET cheap for
-// the block — so the popup shows exactly how recovery offsets gross into net.
+// Cheap popup: the block's gross cheap drivers + any recovery in the block, then
+// the block's cheap value (gross — recovery is NOT subtracted per block). If this
+// block has recovery, it also shows the day's recovery credit and explains that
+// recovery lowers the DAILY load even when the block itself is at 0.
 function cheapBreakdown(date, idx) {
   const ds = blockDrivers(date, idx);
   const gross = ds.filter(d => d.cheap > 1e-9).sort((a, b) => b.cheap - a.cheap).slice(0, 3);
   const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 3);
-  const net = blockMetric(date, idx, 'cheap');
+  const blockCheap = blockMetric(date, idx, 'cheap'); // gross for this block
   let html = `<div class="stim-pop-section">Gross cheap stim</div>`;
   html += gross.length ? gross.map(d => popRow(d.name, d.minutes, d.cheap, '')).join('') : `<div class="stim-pop-none">None</div>`;
   if (rec.length) {
     html += `<div class="stim-pop-section">Recovery</div>`;
     html += rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
   }
-  html += `<div class="stim-pop-net">Net cheap stim<span>${r1(net)}</span></div>`;
+  html += `<div class="stim-pop-net">Block cheap stim<span>${r1(blockCheap)}</span></div>`;
+  if (rec.length) {
+    html += `<div class="stim-pop-credit">Daily recovery credit <span>${signed(-dailyRecoveryCredit(date))}</span></div>`;
+    html += `<div class="stim-pop-recnote">Recovery lowers your daily load even when this block is already at 0.</div>`;
+  }
   return html;
 }
 
@@ -328,6 +334,8 @@ export function renderStimDashboard() {
   const otherLabel = view === 'cheap' ? 'Productive Activation' : 'Cheap Stim Load';
   const otherVal = dailyMetric(date, otherMetric);
   const recovery = dailyMetric(date, 'recovery'); // ≤ 0
+  const grossCheap = dailyGrossCheap(date);
+  const recCredit = dailyRecoveryCredit(date); // ≥ 0 magnitude
 
   // Summary (factual; no advice/diagnosis): today vs target, then vs baseline.
   let summary;
@@ -354,7 +362,12 @@ export function renderStimDashboard() {
     if (view === 'cheap' && base >= 1e-9 && targetStatus(base, target) === 'above') {
       baseTargetClause = ' Your recent cheap-stim baseline is above target.';
     }
-    summary = tSentence + baseClause + baseTargetClause;
+    // Cheap-only: when recovery meaningfully lowered the day, say so explicitly.
+    let recoveryClause = '';
+    if (view === 'cheap' && recCredit > 1e-9 && grossCheap - todayLoad > 0.05) {
+      recoveryClause = ` Recovery credit of ${r1(recCredit)} lowered today's load from ${r1(grossCheap)} gross to ${r1(todayLoad)}.`;
+    }
+    summary = tSentence + baseClause + baseTargetClause + recoveryClause;
   }
 
   panel.innerHTML = header + seg + `
@@ -389,8 +402,14 @@ export function renderStimDashboard() {
     </div>
 
     <div class="stim-sub-grid">
-      <div class="stim-sub"><span class="stim-sub-label">${otherLabel}</span><span class="stim-sub-num">${r1(otherVal)}</span></div>
-      <div class="stim-sub"><span class="stim-sub-label">Recovery Effect</span><span class="stim-sub-num">${r1(recovery)}</span></div>
+      ${view === 'cheap' ? `
+        <div class="stim-sub"><span class="stim-sub-label">Gross cheap</span><span class="stim-sub-num">${r1(grossCheap)}</span></div>
+        <div class="stim-sub"><span class="stim-sub-label">Recovery credit</span><span class="stim-sub-num">${recCredit > 1e-9 ? '−' + r1(recCredit) : '0'}</span></div>
+        <div class="stim-sub"><span class="stim-sub-label">Productive</span><span class="stim-sub-num">${r1(otherVal)}</span></div>
+      ` : `
+        <div class="stim-sub"><span class="stim-sub-label">${otherLabel}</span><span class="stim-sub-num">${r1(otherVal)}</span></div>
+        <div class="stim-sub"><span class="stim-sub-label">Recovery Effect</span><span class="stim-sub-num">${r1(recovery)}</span></div>
+      `}
     </div>
 
     <div class="card mh-summary-card">${summary}</div>

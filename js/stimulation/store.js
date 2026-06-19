@@ -318,10 +318,14 @@ export function baselinePerBlock() {
 //   recovery                 → recovery   = score (negative)
 //   low_stim                 → neutral    (feeds nothing)
 //
-// Productive is kept non-negative per block. Recovery now OFFSETS cheap stim:
-// the Cheap Stim metric the dashboard shows is NET cheap = max(0, gross -
-// |recovery| * RECOVERY_OFFSET) (see blockMetric). So recovery visibly lowers
-// the main cheap value, but never 1:1 — see RECOVERY_OFFSET.
+// Recovery is modelled as a WHOLE-DAY credit, not a per-block subtraction:
+//   • Block level (timeline): cheap = gross cheap of that block. The chart shows
+//     where stimulation actually happened; recovery is shown separately.
+//   • Daily level (regulation): Cheap Stim Load = max(0, dailyGrossCheap -
+//     dailyRecoveryCredit * DAILY_RECOVERY_FACTOR). So a calm walk at 14:00 still
+//     lowers a busy morning, even though its own block can't go below 0.
+// Recovery is therefore credited exactly once (at the daily level) — no double
+// counting between block and day.
 export function metricWeights(category, score) {
   const s = num(score, 0);
   const pos = Math.max(0, s);
@@ -379,40 +383,53 @@ export function blockDrivers(date, idx) {
   return out;
 }
 
-// How strongly recovery offsets cheap stim in the SAME block. 0.5 means recovery
-// cancels half of its own magnitude in cheap load — it helps, but never 1:1, so a
-// little meditation can't neutralise an hour of doomscrolling.
-export const RECOVERY_OFFSET = 0.5;
+// How strongly the day's recovery offsets the day's gross cheap stim. 0.7 means
+// recovery cancels 70% of its own magnitude — it helps a lot, but never 1:1, so
+// a short walk can't fully erase an hour of doomscrolling. (0.6–0.8 is sensible.)
+export const DAILY_RECOVERY_FACTOR = 0.7;
 
-// Gross cheap stim for one block (high/medium-stim only, before any recovery).
+// Gross cheap stim for one block (high/medium-stim only). This is the block-
+// level TIMELINE value the chart shows — recovery is never subtracted per block.
 export function blockGrossCheap(date, idx) {
   return num(blockMetrics(date, idx).cheap, 0);
 }
 
-// Net cheap stim for one block = gross minus a fraction of recovery, clamped at
-// 0. This is the value the Cheap Stim chart, card, baseline and target all use,
-// so they always agree ("the card is the sum of the line").
-export function blockNetCheap(date, idx) {
-  const m = blockMetrics(date, idx);
-  return Math.max(0, m.cheap - Math.abs(num(m.recovery, 0)) * RECOVERY_OFFSET);
-}
-
 // One metric for one block. metric ∈ 'cheap' | 'productive' | 'recovery'.
-// 'cheap' returns NET cheap (recovery already offset) so every cheap consumer —
-// chart, daily card, baseline and target — shares one consistent number.
+// 'cheap' is the block's GROSS cheap (the timeline). Recovery is applied once at
+// the daily level (see dailyNetCheap), so the chart still shows true spikes.
 export function blockMetric(date, idx, metric) {
-  if (metric === 'cheap') return blockNetCheap(date, idx);
+  if (metric === 'cheap') return blockGrossCheap(date, idx);
   return num(blockMetrics(date, idx)[metric], 0);
 }
 
-// Gross (pre-recovery) cheap stim summed across the whole day — used only for
-// small context (e.g. "fully offset by recovery"), never the main number.
+// Whole-day gross cheap stim (sum of every block's gross).
 export function dailyGrossCheap(date) {
   return dayBlocks().reduce((sum, b) => sum + blockGrossCheap(date, b.index), 0);
 }
 
-// Sum of one metric across the whole day.
+// Whole-day recovery credit — the positive magnitude of all recovery logged
+// across the day (recovery scores are negative; this is their absolute total).
+export function dailyRecoveryCredit(date) {
+  const total = dayBlocks().reduce((sum, b) => sum + num(blockMetrics(date, b.index).recovery, 0), 0);
+  return Math.abs(total);
+}
+
+// The MAIN daily Cheap Stim Load: gross minus a fraction of the day's recovery
+// credit, clamped at 0. Recovery ANYWHERE in the day reduces it (cross-block).
+export function dailyNetCheap(date) {
+  return Math.max(0, dailyGrossCheap(date) - dailyRecoveryCredit(date) * DAILY_RECOVERY_FACTOR);
+}
+
+// Optional: leftover calm beyond what the day's cheap stim required.
+export function recoverySurplus(date) {
+  return Math.max(0, dailyRecoveryCredit(date) - dailyGrossCheap(date));
+}
+
+// Sum of one metric across the whole day. 'cheap' returns the DAILY net (recovery
+// credited across the whole day) so the Load card, baseline, target and daily
+// series all agree; the per-block chart uses blockMetric('cheap') = gross.
 export function dailyMetric(date, metric) {
+  if (metric === 'cheap') return dailyNetCheap(date);
   return dayBlocks().reduce((sum, b) => sum + blockMetric(date, b.index, metric), 0);
 }
 
