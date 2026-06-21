@@ -49,6 +49,11 @@ function normalize(d) {
     if (!day.blocks || typeof day.blocks !== 'object') day.blocks = {};
     d.logs[date] = day;
   }
+  // Screen Time import bookkeeping (snapshots per date) + remembered app→activity
+  // mappings. Both additive; absent in older stores, so they default empty here.
+  if (!d.screenTime || typeof d.screenTime !== 'object') d.screenTime = {};
+  if (!d.screenTime.byDate || typeof d.screenTime.byDate !== 'object') d.screenTime.byDate = {};
+  if (!d.appMappings || typeof d.appMappings !== 'object') d.appMappings = {};
   return d;
 }
 
@@ -225,13 +230,20 @@ export function blockEntries(date, idx) {
 export function addEntry(date, idx, activityId, durationMinutes) {
   const day = ensureDay(date);
   if (!day.blocks[idx]) day.blocks[idx] = [];
-  day.blocks[idx].push({ activityId, durationMinutes: Math.max(1, num(durationMinutes, 15)), intensity: 1 });
+  const id = uid();
+  day.blocks[idx].push({ id, activityId, durationMinutes: Math.max(1, num(durationMinutes, 15)), intensity: 1, source: 'manual', createdAt: new Date().toISOString() });
   saveStimulation();
+  return id;
 }
 
 export function setEntryDuration(date, idx, entryIndex, durationMinutes) {
   const entries = blockEntries(date, idx);
-  if (entries[entryIndex]) { entries[entryIndex].durationMinutes = Math.max(1, num(durationMinutes, 15)); saveStimulation(); }
+  if (entries[entryIndex]) {
+    entries[entryIndex].durationMinutes = Math.max(1, num(durationMinutes, 15));
+    // Editing a habit-linked / imported entry keeps the link but flags it as edited.
+    if (entrySource(entries[entryIndex]) !== 'manual') entries[entryIndex].edited = true;
+    saveStimulation();
+  }
 }
 
 export function removeEntry(date, idx, entryIndex) {
@@ -241,6 +253,111 @@ export function removeEntry(date, idx, entryIndex) {
     if (day.blocks[idx].length === 0) delete day.blocks[idx];
     saveStimulation();
   }
+}
+
+// ---- entry sources, linking & import helpers ------------------------------
+// Entries may carry an optional `source` ('manual' | 'screen_time_import' |
+// 'habit_link'; absent = manual) plus link/import metadata. All additive: old
+// entries without a source keep working and still count as manual everywhere.
+
+export function entrySource(e) { return (e && e.source) || 'manual'; }
+
+// A short {text, cls} badge for an entry's source, or null for plain manual.
+export function entrySourceBadge(e) {
+  switch (entrySource(e)) {
+    case 'habit_link':          return { text: 'From habit', cls: 'src-habit' };
+    case 'screen_time_import':  return { text: e && e.edited ? 'Imported · edited' : 'Imported', cls: 'src-import' };
+    default:                    return null;
+  }
+}
+
+// Push a fully-formed entry (with source + metadata) into a block. Used by the
+// habit-link and Screen Time import paths. Returns the new entry's id.
+export function addEntryFull(date, idx, entry) {
+  const day = ensureDay(date);
+  if (!day.blocks[idx]) day.blocks[idx] = [];
+  const e = {
+    intensity: 1,
+    source: 'manual',
+    createdAt: new Date().toISOString(),
+    ...entry,
+    id: entry.id || uid(),
+    durationMinutes: Math.max(1, num(entry.durationMinutes, 15)),
+  };
+  day.blocks[idx].push(e);
+  saveStimulation();
+  return e.id;
+}
+
+// Total minutes logged for one activity on a date, optionally restricted to a
+// set of sources. Drives Screen Time reconciliation's "already logged" figure.
+export function loggedMinutesForActivity(date, activityId, sources = null) {
+  let mins = 0;
+  for (const b of dayBlocks()) {
+    for (const e of blockEntries(date, b.index)) {
+      if (e.activityId !== activityId) continue;
+      if (sources && !sources.includes(entrySource(e))) continue;
+      mins += num(e.durationMinutes, 0);
+    }
+  }
+  return mins;
+}
+
+// Total minutes previously imported from Screen Time for one app key on a date.
+export function importedMinutesForApp(date, appKey) {
+  let mins = 0;
+  for (const b of dayBlocks()) {
+    for (const e of blockEntries(date, b.index)) {
+      if (entrySource(e) === 'screen_time_import' && e.importAppKey === appKey) mins += num(e.durationMinutes, 0);
+    }
+  }
+  return mins;
+}
+
+// Locate all habit-linked entries for a habit/date → [{ idx, entryIndex, entry }].
+export function findHabitLinkEntries(date, habitId) {
+  const out = [];
+  const day = state.stimulation.logs[date];
+  if (!day || !day.blocks) return out;
+  for (const idx of Object.keys(day.blocks)) {
+    (day.blocks[idx] || []).forEach((e, entryIndex) => {
+      if (entrySource(e) === 'habit_link' && e.linkedHabitId === habitId && e.linkedHabitDate === date)
+        out.push({ idx: Number(idx), entryIndex, entry: e });
+    });
+  }
+  return out;
+}
+
+// Remove every habit-linked entry for a habit/date. Never touches manual logs.
+// Returns the count removed; saves once if anything changed.
+export function removeHabitLinkEntries(date, habitId) {
+  const day = state.stimulation.logs[date];
+  if (!day || !day.blocks) return 0;
+  let removed = 0;
+  for (const idx of Object.keys(day.blocks)) {
+    const before = day.blocks[idx].length;
+    day.blocks[idx] = day.blocks[idx].filter(e =>
+      !(entrySource(e) === 'habit_link' && e.linkedHabitId === habitId && e.linkedHabitDate === date));
+    removed += before - day.blocks[idx].length;
+    if (day.blocks[idx].length === 0) delete day.blocks[idx];
+  }
+  if (removed) saveStimulation();
+  return removed;
+}
+
+// Block index that contains a minutes-of-day value; clamps to first/last block.
+export function blockIndexForMinutes(mins) {
+  const blocks = dayBlocks();
+  if (!blocks.length) return 0;
+  const i = blocks.findIndex(b => mins >= b.startMin && mins < b.endMin);
+  if (i !== -1) return i;
+  return mins < blocks[0].startMin ? 0 : blocks.length - 1;
+}
+
+// Block index for the current clock time (used by habit-link + import placement).
+export function currentBlockIndex() {
+  const now = new Date();
+  return blockIndexForMinutes(now.getHours() * 60 + now.getMinutes());
 }
 
 // How many of the day's blocks have at least one entry (for "3 / 8 blocks").
@@ -375,6 +492,7 @@ export function blockDrivers(date, idx) {
       name: ex.name,
       category: ex.category,
       minutes: num(e.durationMinutes, 0),
+      source: entrySource(e),
       cheap: w.cheap * frac,
       productive: w.productive * frac,
       recovery: w.recovery * frac,

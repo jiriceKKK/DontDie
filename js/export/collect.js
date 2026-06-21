@@ -65,6 +65,7 @@ export function collectPhysical(b) {
     builtInHabits: BUILT_IN_HABITS.map(h => ({ id: h.id, name: h.name, days: h.days, category: h.category, label: h.label })),
     customHabits: clone(state.customHabits || []),
     hiddenBuiltins: [...(state.hiddenBuiltins || [])], // Set → array
+    habitConfig: clone(state.habitConfig || null),     // built-in overrides + custom meta (tags, schedule, stim links)
     logsByDate: filterDateMap(state.logsByDate, b),
     split: clone(state.split || null),
   };
@@ -85,6 +86,8 @@ export function collectStimulation(b) {
     settings: clone(s.settings || null),
     activities: clone(s.activities || []),
     logs: filterDateMap(s.logs, b),
+    screenTime: { byDate: filterDateMap((s.screenTime || {}).byDate, b) }, // Screen Time import snapshots
+    appMappings: clone(s.appMappings || {}),                               // remembered app→category mappings
   };
 }
 

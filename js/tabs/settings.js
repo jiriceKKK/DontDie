@@ -10,6 +10,7 @@ import { openModal, closeModal } from '../ui/modal.js';
 import { switchTab } from '../navigation.js';
 import { renderTodayHabits, renderToday } from './today.js';
 import { scheduleOf, findEffectiveHabit } from '../habits.js';
+import { getActivities } from '../stimulation/store.js';
 import {
   getBuiltinOverride, hasBuiltinOverride, setBuiltinOverride, resetBuiltinOverride,
   getCustomMeta, setCustomMeta,
@@ -265,7 +266,16 @@ function openHabitEditor({ mode, kind, id } = {}) {
     everyN: sch.type === 'interval' ? (sch.everyN || 40) : 40,
     start: sch.type === 'interval' && sch.start ? sch.start : formatDate(today()),
     tags: cleanTags(eff.tags || []),
+    link: {
+      enabled: !!(eff.stimLink && eff.stimLink.enabled),
+      activityId: (eff.stimLink && eff.stimLink.activityId) || '',
+      durationMin: (eff.stimLink && eff.stimLink.durationMin) || 30,
+    },
   };
+
+  const stimActs = getActivities();
+  if (!w.link.activityId && stimActs.length) w.link.activityId = stimActs[0].id;
+  const actOptions = stimActs.map(a => `<option value="${a.id}" ${w.link.activityId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
 
   const dayBtns = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((lbl, i) => {
     const dow = i === 6 ? 0 : i + 1;
@@ -314,6 +324,18 @@ function openHabitEditor({ mode, kind, id } = {}) {
       <div class="he-field-help">Used as the habit's sub-label. Duplicates are removed.</div>
     </details>
 
+    <details class="he-advanced he-link" ${w.link.enabled ? 'open' : ''} ${stimActs.length ? '' : 'hidden'}>
+      <summary>Link to Stimulation (optional)</summary>
+      <label class="he-link-toggle"><input type="checkbox" id="he-link-on" ${w.link.enabled ? 'checked' : ''}> Log a Stimulation activity when completed</label>
+      <div id="he-link-fields" style="${w.link.enabled ? '' : 'display:none;'}">
+        <label class="form-label">Activity</label>
+        <select class="form-input" id="he-link-act">${actOptions}</select>
+        <label class="form-label" style="margin-top:8px;">Duration (min)</label>
+        <input class="form-input" id="he-link-dur" type="number" inputmode="numeric" min="1" max="600" value="${w.link.durationMin}">
+        <div class="he-field-help">Ticking this habit adds the activity to Stimulation in the current time block; unticking removes it.</div>
+      </div>
+    </details>
+
     ${isBuiltin ? `<button type="button" class="btn btn-ghost" id="he-reset" style="width:100%;margin-top:10px;">Reset to default</button>` : ''}
 
     <div class="modal-actions">
@@ -344,6 +366,16 @@ function openHabitEditor({ mode, kind, id } = {}) {
     if (w.days.has(dow)) { w.days.delete(dow); b.classList.remove('active'); }
     else { w.days.add(dow); b.classList.add('active'); }
   }));
+  const linkOn = $('he-link-on');
+  if (linkOn) linkOn.addEventListener('change', () => {
+    w.link.enabled = linkOn.checked;
+    $('he-link-fields').style.display = linkOn.checked ? '' : 'none';
+  });
+  const linkAct = $('he-link-act');
+  if (linkAct) linkAct.addEventListener('change', () => { w.link.activityId = linkAct.value; });
+  const linkDur = $('he-link-dur');
+  if (linkDur) linkDur.addEventListener('input', () => { w.link.durationMin = Math.max(1, parseInt(linkDur.value) || 1); });
+
   $('he-cancel').addEventListener('click', closeModal);
   if (isBuiltin && $('he-reset')) $('he-reset').addEventListener('click', () => {
     resetBuiltinOverride(id);
@@ -366,23 +398,29 @@ function openHabitEditor({ mode, kind, id } = {}) {
     }
     const tags = cleanTags(($('he-tags').value || '').split(','));
     const days = daysFromSchedule(schedule);
+    const stimLink = {
+      enabled: !!w.link.enabled,
+      activityId: w.link.activityId || '',
+      durationMin: Math.max(1, Number(w.link.durationMin) || 30),
+      blockMode: 'current_time',
+    };
 
     if (mode === 'create') {
       const { data, error } = await dbCreateCustomHabit({ name, days, color: w.color, sort_order: state.customHabits.length });
       if (error || !data) { showToast('Failed to save habit (offline?)', 'error'); return; }
       state.customHabits.push(data);
-      setCustomMeta(data.id, { tags, schedule, category: w.category });
+      setCustomMeta(data.id, { tags, schedule, category: w.category, stimLink });
       showToast('Habit added', 'success');
       closeModal(); renderSettings(); switchTab('today');
     } else if (isBuiltin) {
-      setBuiltinOverride(id, { name, schedule, category: w.category, days, tags });
+      setBuiltinOverride(id, { name, schedule, category: w.category, days, tags, stimLink });
       showToast('Habit updated', 'success');
       closeModal(); renderSettings(); renderTodayHabits(today());
     } else {
       const habit = state.customHabits.find(h => h.id === id);
       if (habit) { habit.name = name; habit.days = days; habit.color = w.color; }
       await dbUpdateCustomHabit(id, { name, days, color: w.color });
-      setCustomMeta(id, { tags, schedule, category: w.category });
+      setCustomMeta(id, { tags, schedule, category: w.category, stimLink });
       showToast('Habit updated', 'success');
       closeModal(); renderSettings(); renderTodayHabits(today());
     }

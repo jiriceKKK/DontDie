@@ -84,6 +84,29 @@ Categories: `high_stim · medium_stim · productive_stim · low_stim · recovery
 A JSON array of the same fields also works. Invalid lines are reported in a
 preview and skipped; duplicates (by name) are skipped on import.
 
+**Screen Time import** (Log → *Import*, or Stimulation Settings) — paste your
+iPhone Screen Time list and it becomes stimulation logs. Imports are treated as
+**snapshots, not additive logs**: an extract is the running total so far that
+day, so re-importing later only adds the *new* minutes. For each app it
+reconciles `missing = max(0, screenTimeTotal − alreadyImported − alreadyLogged)`
+where *already logged* counts both manual and habit-linked entries — so nothing
+is ever double-counted. Pasting the same snapshot twice is detected as a
+duplicate; a newer snapshot for the same day reconciles the delta. Ambiguous /
+unknown apps go through a **one-tap classifier** (High / Medium / Productive /
+Low / Recovery / Ignore) — one tap per app, auto-advancing, with a single
+*Confirm import* at the end. Choices are remembered per app (context-sensitive
+apps like Safari/YouTube keep a *change* option). Imported entries are tagged
+`source: 'screen_time_import'` and shown as **Imported** in the log and chart
+popup. The per-app activity is found by name or created once (tagged
+`screen-time`), so the core scoring formulas are untouched.
+
+**Habit → Stimulation links** (habit editor → *Link to Stimulation*) — a habit
+can mirror itself into Stimulation. Ticking *Zone 2 cardio* or *Meditation* adds
+the chosen activity (e.g. 60 / 10 min) to the current time block with
+`source: 'habit_link'` (shown as **From habit**); unticking removes exactly that
+entry and never touches manual logs. No duplicate is created if one already
+exists, and Screen Time import treats habit-linked minutes as already logged.
+
 ### Physical Health
 
 - **Today tab** — daily habit checklist with optimistic sync
@@ -355,9 +378,12 @@ js/
     journalTemplates.js — guided journal template definitions
     tabs/           — checkin · tasks · journal · stats
   stimulation/
-    store.js        — Stimulation data: load/seed/save + CRUD + load/baseline calc + parser
+    store.js        — Stimulation data: load/seed/save + CRUD + load/baseline calc + parser + entry sources/link/import helpers
+    screenTime.js   — Screen Time import model: tolerant parser, app→category mappings, snapshot reconciliation, duplicate detection
     defaultActivities.js — seed activity library + categories + default settings
-    tabs/           — dashboard · log · activities · stats · settings
+    tabs/           — dashboard · log · activities · stats · settings · importScreen (Screen Time import modal flow)
+  habitConfig.js    — built-in overrides + custom-habit meta (tags, schedule, stim links)
+  habitStimLink.js  — mirrors a linked habit's completion into a Stimulation log
   school/
     store.js        — School data: load/seed/save + subjects/tests/sessions/results CRUD + APP_RESULT parser
     planner.js      — pure rule-based study-session scheduler

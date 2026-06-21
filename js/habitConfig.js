@@ -56,6 +56,16 @@ export function resetBuiltinOverride(id) {
   if (state.habitConfig && state.habitConfig.builtin[id]) { delete state.habitConfig.builtin[id]; saveHabitConfig(); }
 }
 
+// The active stimulation link for a habit (built-in or custom), or null. Only
+// returns it when enabled AND it points at an activity, so callers can treat a
+// truthy result as "create/remove a linked Stimulation log on toggle".
+export function getStimLink(habitId) {
+  const c = state.habitConfig;
+  if (!c) return null;
+  const link = (c.builtin[habitId] && c.builtin[habitId].stimLink) || (c.custom[habitId] && c.custom[habitId].stimLink) || null;
+  return (link && link.enabled && link.activityId) ? link : null;
+}
+
 export function getCustomMeta(id) { return (state.habitConfig && state.habitConfig.custom[id]) || null; }
 export function setCustomMeta(id, patch) {
   if (!state.habitConfig) state.habitConfig = empty();

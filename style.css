@@ -3018,3 +3018,80 @@ body[data-mode="school"] {
 .mode-fab-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .mode-fab-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 768px) { .mode-fab { bottom: 16px; } }
+
+/* ============================================================
+   SCREEN TIME IMPORT + HABIT->STIM LINK + SOURCE BADGES
+   ============================================================ */
+
+/* Log header with the Import button on the right */
+.mh-header.sti-loghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sti-import-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; min-height: 36px; flex-shrink: 0; }
+
+/* Source badges on log entries */
+.stim-src { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 6px; border-radius: 6px; vertical-align: middle; margin-left: 4px; white-space: nowrap; }
+.stim-src.src-habit { background: rgba(110,231,183,0.16); color: var(--accent); }
+.stim-src.src-import { background: rgba(96,165,250,0.16); color: var(--blue); }
+
+/* Source tag inside the dashboard block popup */
+.stim-pop-src { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); margin-left: 6px; padding: 1px 4px; border: 1px solid var(--border); border-radius: 4px; }
+
+/* Import modal — paste step */
+.sti-intro { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 14px; }
+.sti-daypick { margin-bottom: 12px; }
+.sti-textarea { width: 100%; resize: vertical; font-family: 'DM Mono', ui-monospace, monospace; font-size: 13px; line-height: 1.5; min-height: 150px; }
+.sti-err { color: var(--danger); font-size: 13px; margin-top: 10px; }
+.sti-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
+.sti-hint code, .sti-intro code { background: var(--bg-elevated); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+/* Import modal — duplicate warning */
+.sti-dup { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--text-secondary); line-height: 1.5; padding: 4px 0 8px; }
+.sti-dup-icon { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: rgba(251,191,36,0.18); color: var(--warning); display: flex; align-items: center; justify-content: center; font-weight: 700; }
+
+/* Import modal — classify step */
+.sti-cl-progress { font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 10px; }
+.sti-cl-app { text-align: center; margin-bottom: 4px; }
+.sti-cl-name { font-size: 20px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+.sti-cl-time { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.sti-cl-q { text-align: center; font-size: 13px; color: var(--text-secondary); margin: 12px 0; }
+.sti-cl-opts { display: grid; gap: 8px; }
+.sti-cl-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 11px 14px; border-radius: var(--radius-card); background: var(--bg-card); border: 1px solid var(--border); cursor: pointer; min-height: 50px; }
+.sti-cl-opt:active { background: var(--bg-elevated); }
+.sti-cl-opt.active { border-color: var(--accent); background: rgba(110,231,183,0.08); }
+.sti-cl-opt.is-ignore .sti-cl-opt-label { color: var(--text-secondary); }
+.sti-cl-opt-label { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.sti-cl-opt-hint { font-size: 11px; color: var(--text-muted); }
+.sti-cl-spacer { flex: 1; }
+
+/* Import modal — preview step */
+.sti-note { font-size: 12px; color: var(--text-secondary); background: var(--bg-elevated); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.45; }
+.sti-prev-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.sti-prev-place { font-size: 11px; font-weight: 400; color: var(--text-muted); text-align: right; }
+.sti-prev-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.sti-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
+.sti-row.is-ambiguous { border-color: var(--warning); }
+.sti-row.is-ignored { opacity: 0.6; }
+.sti-row-main { min-width: 0; flex: 1; }
+.sti-row-app { display: block; font-size: 14px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sti-row-sub { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sti-cat-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.sti-row-act { flex-shrink: 0; font-size: 13px; font-weight: 600; }
+.sti-row-act.act-import { color: var(--accent); }
+.sti-row-act.act-skip { color: var(--text-muted); font-weight: 500; }
+.sti-change { background: none; border: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; padding: 4px 10px; border-radius: var(--radius-pill); cursor: pointer; flex-shrink: 0; }
+.sti-change-inline { border: none; padding: 0 0 0 6px; color: var(--blue); text-decoration: underline; border-radius: 0; }
+.sti-prev-total { text-align: center; font-size: 13px; color: var(--text-secondary); margin-top: 12px; }
+.sti-prev-total b { color: var(--accent); }
+
+/* Stimulation settings — remembered app mappings */
+.stim-map-head { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 16px 0 8px; }
+.stim-map-list { display: flex; flex-direction: column; gap: 6px; }
+.stim-map-row { display: flex; align-items: center; gap: 8px; }
+.stim-map-app { flex: 1; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stim-map-sel { flex-shrink: 0; width: 132px; font-size: 12px; padding: 6px 8px; min-height: 34px; }
+.stim-map-del { flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.stim-map-del:active { color: var(--danger); }
+
+/* Habit editor — link to Stimulation */
+.he-link-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin: 8px 0; }
+.he-link-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+.he-link #he-link-fields { margin-top: 6px; }

@@ -3,6 +3,7 @@ import { CATEGORY_COLORS, CATEGORY_LABELS, DAY_FULL, MONTH_NAMES } from '../cons
 import { formatDate, today, addDays, isSameDay, parseDate, friendlyDay } from '../utils/date.js';
 import { getHabitsForDate, getLogsForDate, isCompleted, getDayStats, computeStreak } from '../habits.js';
 import { dbUpsertLog } from '../db.js';
+import { syncHabitStimLink } from '../habitStimLink.js';
 import { queueSync, setOnline, startRetryInterval } from '../sync.js';
 import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
@@ -17,6 +18,10 @@ export async function toggleHabit(dateStr, habitId, currentState) {
   if (!state.logsByDate[dateStr]) state.logsByDate[dateStr] = {};
   state.logsByDate[dateStr][habitId] = newValue;
 
+  // Mirror the completion into Stimulation if this habit is linked to an
+  // activity (no-op otherwise). Created/removed optimistically with the toggle.
+  syncHabitStimLink(dateStr, habitId, newValue);
+
   if (dateStr === formatDate(today())) {
     renderTodayHabits(today());
     updateProgressRing(today());
@@ -26,6 +31,7 @@ export async function toggleHabit(dateStr, habitId, currentState) {
 
   if (error) {
     state.logsByDate[dateStr][habitId] = currentState;
+    syncHabitStimLink(dateStr, habitId, currentState, { silent: true }); // revert the linked log too
     if (dateStr === formatDate(today())) {
       renderTodayHabits(today());
       updateProgressRing(today());

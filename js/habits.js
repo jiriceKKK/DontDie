@@ -47,6 +47,7 @@ function effectiveCustom(c) {
     id: c.id, name: c.name, days: c.days, color: c.color, active: c.active,
     category: m.category || 'custom',
     schedule: m.schedule || undefined,
+    stimLink: m.stimLink || undefined,
     tags,
     icon: m.icon || '✦',
     label: tags.length ? tags.join(' · ') : '',  // no more "Custom · Custom"

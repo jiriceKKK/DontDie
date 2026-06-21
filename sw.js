@@ -8,7 +8,7 @@
 // Bump CACHE on each deploy that should hard-invalidate old cached assets.
 // ============================================================
 
-const CACHE = 'dontdie-v15';
+const CACHE = 'dontdie-v16';
 
 self.addEventListener('install', () => self.skipWaiting());
 

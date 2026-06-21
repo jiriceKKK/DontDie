@@ -132,8 +132,10 @@ function chartSvg(curve, basePerBlock, color, band) {
 
 // Compact driver lines for ONE block (the tapped block only — never two).
 // Metric-positive activities first (top 3), then up to 2 recovery items.
-const popRow = (name, mins, val, tag) =>
-  `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
+const srcTag = src => src === 'habit_link' ? '<span class="stim-pop-src">habit</span>'
+  : src === 'screen_time_import' ? '<span class="stim-pop-src">imported</span>' : '';
+const popRow = (name, mins, val, tag, src) =>
+  `<div class="stim-pop-driver"><span class="stim-pop-dn">${esc(name)}${srcTag(src)}</span><span class="stim-pop-dv">${mins} min · ${signed(val)}${tag ? ' ' + tag : ''}</span></div>`;
 
 // Productive popup: top productive drivers (and recovery as context).
 function driversCompact(date, idx, metric) {
@@ -141,8 +143,8 @@ function driversCompact(date, idx, metric) {
   const main = ds.filter(d => d[metric] > 1e-9).sort((a, b) => b[metric] - a[metric]).slice(0, 3);
   const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 2);
   if (!main.length && !rec.length) return `<div class="stim-pop-none">No productive drivers</div>`;
-  return main.map(d => popRow(d.name, d.minutes, d[metric], '')).join('')
-    + rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
+  return main.map(d => popRow(d.name, d.minutes, d[metric], '', d.source)).join('')
+    + rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec', d.source)).join('');
 }
 
 // Cheap popup: the block's gross cheap drivers + any recovery in the block, then
@@ -155,10 +157,10 @@ function cheapBreakdown(date, idx) {
   const rec = ds.filter(d => d.recovery < -1e-9).sort((a, b) => a.recovery - b.recovery).slice(0, 3);
   const blockCheap = blockMetric(date, idx, 'cheap'); // gross for this block
   let html = `<div class="stim-pop-section">Gross cheap stim</div>`;
-  html += gross.length ? gross.map(d => popRow(d.name, d.minutes, d.cheap, '')).join('') : `<div class="stim-pop-none">None</div>`;
+  html += gross.length ? gross.map(d => popRow(d.name, d.minutes, d.cheap, '', d.source)).join('') : `<div class="stim-pop-none">None</div>`;
   if (rec.length) {
     html += `<div class="stim-pop-section">Recovery</div>`;
-    html += rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec')).join('');
+    html += rec.map(d => popRow(d.name, d.minutes, d.recovery, 'rec', d.source)).join('');
   }
   html += `<div class="stim-pop-net">Block cheap stim<span>${r1(blockCheap)}</span></div>`;
   if (rec.length) {

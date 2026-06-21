@@ -3,8 +3,9 @@ import { formatDate, today, addDays } from '../../utils/date.js';
 import { CATEGORIES, categoryColor } from '../defaultActivities.js';
 import {
   dayBlocks, blockEntries, addEntry, setEntryDuration, removeEntry,
-  filledBlockCount, getActivities, findActivity,
+  filledBlockCount, getActivities, findActivity, entrySourceBadge,
 } from '../store.js';
+import { openScreenTimeImport } from './importScreen.js';
 
 const DURATIONS = [5, 15, 30, 60];
 let _search = ''; // activity search filter (per Log session)
@@ -94,9 +95,15 @@ function draw() {
   }
 
   panel.innerHTML = `
-    <div class="mh-header">
-      <div class="mh-title">Log</div>
-      <div class="mh-subtitle">Tap what happened in each time block</div>
+    <div class="mh-header sti-loghead">
+      <div>
+        <div class="mh-title">Log</div>
+        <div class="mh-subtitle">Tap what happened in each time block</div>
+      </div>
+      <button class="btn btn-ghost sti-import-btn" id="stim-import" aria-label="Import Screen Time">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+        Import
+      </button>
     </div>
 
     <div class="pill-nav">
@@ -133,6 +140,10 @@ function draw() {
     if (ns) { ns.focus(); try { ns.setSelectionRange(at, at); } catch {} }
   });
 
+  // Screen Time import (reconciles snapshots; refreshes this tab when done)
+  const imp = panel.querySelector('#stim-import');
+  if (imp) imp.addEventListener('click', () => openScreenTimeImport({ date: state.stimDate, onDone: draw }));
+
   // date toggle (in-tab action → draw, so it doesn't snap back to "now")
   panel.querySelectorAll('.pill-btn[data-date]').forEach(b => b.addEventListener('click', () => {
     state.stimDate = b.dataset.date; draw();
@@ -161,10 +172,11 @@ function draw() {
 
 function entryRow(e, i) {
   const ex = findActivity(e.activityId);
+  const badge = entrySourceBadge(e);
   return `
     <div class="stim-entry">
       <div class="stim-entry-top">
-        <span class="stim-entry-name">${esc(ex ? ex.name : '(removed)')}</span>
+        <span class="stim-entry-name">${esc(ex ? ex.name : '(removed)')}${badge ? ` <span class="stim-src ${badge.cls}">${esc(badge.text)}</span>` : ''}</span>
         <span class="stim-entry-dur">${e.durationMinutes} min</span>
         <button class="stim-entry-rm" data-rm="${i}" aria-label="Remove">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
