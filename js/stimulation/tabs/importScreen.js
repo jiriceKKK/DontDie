@@ -17,17 +17,18 @@ import { formatDate, today, addDays } from '../../utils/date.js';
 import { categoryLabel, categoryColor } from '../defaultActivities.js';
 import { dayBlocks, blockIndexForMinutes, currentBlockIndex } from '../store.js';
 import {
-  parseScreenTime, snapshotStatus, resolveMapping, buildPlan, commitImport,
-  timeToMinutes, CLASS_OPTIONS,
+  parseScreenTime, snapshotStatus, buildPlan, commitImport,
+  timeToMinutes, CLASS_OPTIONS, needsClassify, hasTimePlacement,
 } from '../screenTime.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
 let S = null; // session state for the open flow
 
 export function openScreenTimeImport(opts = {}) {
   const d = opts.date || formatDate(today());
-  S = { date: d, text: '', parsed: null, classified: {}, queue: [], qi: 0, capturedAt: null, onDone: opts.onDone || null };
+  S = { date: d, text: '', parsed: null, classified: {}, queue: [], qi: 0, capturedAt: null, placement: 'single', onDone: opts.onDone || null };
   renderPaste();
 }
 
@@ -43,7 +44,7 @@ function renderPaste(errMsg) {
     </div>
     <textarea class="form-input sti-textarea" id="sti-text" rows="8" placeholder="Brawl Stars: 49 min&#10;Instagram 1h 12m&#10;Safari 18m&#10;YouTube 35m">${esc(S.text)}</textarea>
     ${errMsg ? `<div class="sti-err">${esc(errMsg)}</div>` : ''}
-    <div class="sti-hint">One app per line, e.g. <code>Brawl Stars: 49 min</code> or <code>Instagram 1h 12m</code>. A line like <code>At 12:45</code> sets the snapshot time.</div>
+    <div class="sti-hint">One app per line, e.g. <code>Brawl Stars: 49 min</code> or <code>Instagram 1h 12m</code>. A line like <code>At 12:45</code> sets the snapshot time. A <code>DONTDIE_SCREEN_TIME_IMPORT_V1</code> JSON block is also accepted.</div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="sti-cancel">Cancel</button>
       <button class="btn btn-primary" id="sti-scan">Scan</button>
@@ -59,18 +60,37 @@ function renderPaste(errMsg) {
 
 function onScan() {
   const parsed = parseScreenTime(S.text);
+  // Advanced marker present but JSON invalid / wrong type / no apps — show the
+  // reason; never silently fall back to the simple line parser.
+  if (parsed.fatal) { renderFatal(parsed.fatal); return; }
   if (!parsed.items.length) {
     renderPaste('No apps found. Use lines like "Brawl Stars: 49 min".');
     return;
   }
   S.parsed = parsed;
   S.capturedAt = parsed.capturedAt;
-  // Reset session classifications for a fresh scan.
-  S.classified = {};
+  S.classified = {};        // fresh scan
+  S.placement = 'single';   // safe default; spread is opt-in in the preview
+  // Advanced extracts carry their own date — use it so reconciliation is correct.
+  if (parsed.format === 'advanced' && parsed.date) S.date = parsed.date;
 
   const status = snapshotStatus(S.date, parsed.items);
   if (status.kind === 'duplicate') { renderDuplicate(); return; }
   startClassifyOrPreview();
+}
+
+// Advanced import couldn't be used — clear reason, no fallback, no fake apps.
+function renderFatal(msg) {
+  openModal(`
+    <div class="sti-dup">
+      <div class="sti-dup-icon">!</div>
+      <div>${esc(msg)}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="sti-fatal-back">Back</button>
+    </div>
+  `, 'Import problem');
+  document.getElementById('sti-fatal-back').addEventListener('click', () => renderPaste());
 }
 
 // ---- step 2: duplicate warning --------------------------------------------
@@ -90,8 +110,8 @@ function renderDuplicate() {
 }
 
 function startClassifyOrPreview() {
-  // Queue = apps with no confident mapping yet (need one tap each).
-  S.queue = S.parsed.items.filter(it => resolveMapping(it.key).status === 'ambiguous').map(it => it.key);
+  // Queue = apps with no confident mapping/guess yet (need one tap each).
+  S.queue = S.parsed.items.filter(it => needsClassify(it)).map(it => it.key);
   S.qi = 0;
   if (S.queue.length) renderClassify();
   else renderPreview();
@@ -149,15 +169,25 @@ function renderPreview() {
   const importMin = toImport.reduce((s, r) => s + r.missing, 0);
   const status = snapshotStatus(S.date, S.parsed.items);
 
+  const adv = S.parsed.format === 'advanced';
+  const meta = (adv && S.parsed.meta) || {};
+  const placeOpt = adv && hasTimePlacement(S.parsed);
+
   const blockIdx = S.capturedAt != null ? blockIndexForMinutes(timeToMinutes(S.capturedAt) || 0) : currentBlockIndex();
   const blockLabel = (dayBlocks()[blockIdx] || {}).label || '';
+  const placeText = placeOpt && S.placement === 'spread'
+    ? 'spread across the day (estimated)'
+    : `${S.capturedAt ? `snapshot ${esc(S.capturedAt)} · ` : ''}lands in ${esc(blockLabel)}`;
 
   openModal(`
+    ${adv ? advHeader(meta) : ''}
     ${status.kind === 'update' ? `<div class="sti-note">Updating the snapshot for ${esc(dayLabel(S.date))} — only new minutes since your last import will be added.</div>` : ''}
+    ${adv ? advWarnings(meta) : ''}
     <div class="sti-prev-head">
       <span>${esc(dayLabel(S.date))}</span>
-      <span class="sti-prev-place">${S.capturedAt ? `snapshot ${esc(S.capturedAt)} · ` : ''}lands in ${esc(blockLabel)}</span>
+      <span class="sti-prev-place">${placeText}</span>
     </div>
+    ${placeOpt ? placementToggle() : ''}
     <div class="sti-prev-list">
       ${plan.map(previewRow).join('')}
     </div>
@@ -170,12 +200,51 @@ function renderPreview() {
   `, 'Review import');
 
   document.querySelectorAll('[data-change]').forEach(b => b.addEventListener('click', () => reclassifyOne(b.dataset.change)));
+  document.querySelectorAll('.sti-place-btn').forEach(b => b.addEventListener('click', () => { S.placement = b.dataset.place; renderPreview(); }));
   document.getElementById('sti-prev-back').addEventListener('click', () => {
-    if (S.parsed.items.some(it => resolveMapping(it.key).status === 'ambiguous')) startClassifyOrPreview();
+    if (S.parsed.items.some(it => needsClassify(it))) startClassifyOrPreview();
     else renderPaste();
   });
   const conf = document.getElementById('sti-prev-confirm');
   if (conf) conf.addEventListener('click', onConfirm);
+}
+
+// Advanced extract header: total, date, snapshot time, confidence summary.
+function advHeader(meta) {
+  const conf = meta.sourceConfidence || {};
+  const bits = [];
+  if (conf.dailyTotal) bits.push(`Daily totals: ${esc(conf.dailyTotal)}`);
+  if (conf.appByHour) bits.push(`App-by-hour: ${esc(conf.appByHour)}`);
+  const total = meta.totalScreenTimeText ? esc(meta.totalScreenTimeText)
+    : (meta.totalScreenTimeMin != null ? fmtMin(meta.totalScreenTimeMin) : null);
+  return `<div class="sti-adv-head">
+    <div class="sti-adv-title">Screen Time Import${total ? ` · ${total}` : ''}</div>
+    <div class="sti-adv-sub">${esc(dayLabel(S.date))}${S.capturedAt ? ` · snapshot ${esc(S.capturedAt)}` : ''}${bits.length ? ' · ' + bits.join(' · ') : ''}</div>
+  </div>`;
+}
+
+// Surfaced warnings: JSON warnings + estimated-timing / unaccounted-time notes.
+function advWarnings(meta) {
+  const ws = [...(S.parsed.warnings || [])];
+  const conf = meta.sourceConfidence || {};
+  if (conf.appByHour === 'low') ws.push('Exact app-by-hour timing is not visible; hourly distribution is estimated.');
+  if (num(meta.unaccountedTimeMinEstimate) > 0) ws.push(`About ${fmtMin(meta.unaccountedTimeMinEstimate)} of usage is unaccounted for.`);
+  if (!ws.length) return '';
+  return `<div class="sti-warn">${ws.map(w => `<div class="sti-warn-line">• ${esc(w)}</div>`).join('')}</div>`;
+}
+
+// Placement choice when the extract has hourly estimates / app time blocks.
+function placementToggle() {
+  const lowConf = (S.parsed.meta.sourceConfidence || {}).appByHour === 'low' && !(S.parsed.appTimeBlocks && S.parsed.appTimeBlocks.length);
+  return `<div class="sti-place">
+    <div class="sti-place-row">
+      <button class="sti-place-btn ${S.placement === 'single' ? 'active' : ''}" data-place="single">Snapshot time</button>
+      <button class="sti-place-btn ${S.placement === 'spread' ? 'active' : ''}" data-place="spread">Spread across day${lowConf ? ' (estimate)' : ''}</button>
+    </div>
+    <div class="sti-place-note">${S.placement === 'spread'
+      ? 'Distributes each app across time blocks from the hourly estimate — entries are marked estimated.'
+      : 'Places imported minutes in the snapshot-time block.'}</div>
+  </div>`;
 }
 
 function previewRow(r) {
@@ -199,7 +268,7 @@ function previewRow(r) {
   if (r.action === 'import') { actText = `+${fmtMin(r.missing)}`; actCls = 'act-import'; }
   else if (r.action === 'exceeds') { actText = 'over'; actCls = 'act-skip'; }
   else { actText = 'covered'; actCls = 'act-skip'; }
-  const changeable = r.recheck || r.source === 'session' || r.source === 'user';
+  const changeable = r.recheck || r.source === 'session' || r.source === 'user' || r.source === 'guess';
   return `<div class="sti-row">
     <div class="sti-row-main">
       <span class="sti-row-app">${esc(r.app)}</span>
@@ -215,7 +284,11 @@ function previewRow(r) {
 
 function onConfirm() {
   const plan = buildPlan(S.date, S.parsed.items, S.classified);
-  const res = commitImport(S.date, plan, S.capturedAt, S.classified);
+  const res = commitImport(S.date, plan, S.capturedAt, S.classified, {
+    placement: S.placement,
+    hourlyEstimates: (S.parsed && S.parsed.hourlyEstimates) || [],
+    appTimeBlocks: (S.parsed && S.parsed.appTimeBlocks) || [],
+  });
   closeModal();
   if (res.importedApps > 0) showToast(`Imported ${fmtMin(res.importedMin)} across ${res.importedApps} app${res.importedApps > 1 ? 's' : ''}`, 'success');
   else showToast('Nothing new to import', 'default');

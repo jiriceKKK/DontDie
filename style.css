@@ -3095,3 +3095,15 @@ body[data-mode="school"] {
 .he-link-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin: 8px 0; }
 .he-link-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 .he-link #he-link-fields { margin-top: 6px; }
+
+/* Advanced import (DONTDIE_SCREEN_TIME_IMPORT_V1) header + warnings + placement */
+.sti-adv-head { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.sti-adv-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.sti-adv-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+.sti-warn { background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.25); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+.sti-warn-line { font-size: 11px; color: var(--warning); line-height: 1.5; }
+.sti-place { margin: 4px 0 12px; }
+.sti-place-row { display: flex; gap: 6px; }
+.sti-place-btn { flex: 1; font-size: 12px; padding: 8px 10px; border-radius: var(--radius-pill); background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer; min-height: 36px; }
+.sti-place-btn.active { border-color: var(--accent); background: rgba(110,231,183,0.10); color: var(--text-primary); }
+.sti-place-note { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4; }

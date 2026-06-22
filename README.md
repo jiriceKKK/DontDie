@@ -100,6 +100,21 @@ apps like Safari/YouTube keep a *change* option). Imported entries are tagged
 popup. The per-app activity is found by name or created once (tagged
 `screen-time`), so the core scoring formulas are untouched.
 
+Two input formats are accepted. The **simple** format is one app per line
+(`Brawl Stars: 49 min`, `Instagram 1h 12m`, an optional `At 12:45` snapshot
+time). The **advanced** format is a structured `DONTDIE_SCREEN_TIME_IMPORT_V1`
+JSON block produced by an AI from a Screen Time screenshot — it carries the date,
+snapshot time, daily total, source-confidence, per-app `stimulationGuess`, and
+optional `hourlyEstimates` / `appTimeBlocks`. If the marker is present the parser
+**always** uses the JSON path (smart/curly quotes are normalised first) and never
+falls back to the line parser, so the marker line can't be mistaken for an app;
+invalid JSON, a wrong `type`, or no apps each show a clear error instead. A
+confident `stimulationGuess` auto-maps an app (skipping the classifier); `unknown`
+or context-sensitive apps still go one-tap. When `hourlyEstimates` / `appTimeBlocks`
+exist the preview offers **Snapshot time** (safe default — one block) or **Spread
+across day** (estimated distribution across blocks, entries marked
+`estimated: true` with a `timeConfidence`).
+
 **Habit → Stimulation links** (habit editor → *Link to Stimulation*) — a habit
 can mirror itself into Stimulation. Ticking *Zone 2 cardio* or *Meditation* adds
 the chosen activity (e.g. 60 / 10 min) to the current time block with
