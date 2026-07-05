@@ -1,30 +1,66 @@
 /* ============================================================
-   CSS VARIABLES & RESET
+   DESIGN TOKENS — "Obsidian Instrument"
+   Layered obsidian surfaces · aurora ambient light · luminous
+   accents · precision mono data type · token-driven motion.
+   Old variable names are kept as the live tokens so every
+   existing rule re-skins from here.
    ============================================================ */
 :root {
-  --bg-primary: #0d0d0f;
-  --bg-surface: #141416;
-  --bg-card: #1a1a1e;
-  --bg-elevated: #222228;
-  --border: #2a2a32;
-  --border-subtle: #1e1e24;
-  --accent: #6ee7b7;
-  --accent-dim: #34d399;
-  --accent-muted: #1a3d30;
+  /* -- background layers (deep, slightly cool) ---------------- */
+  --bg-base: #08080b;
+  --bg-primary: var(--bg-base);            /* legacy alias */
+  --bg-surface: #0e0e13;                   /* shell chrome  */
+  --bg-card: #131318;                      /* surface-1     */
+  --bg-elevated: #1a1a21;                  /* surface-2     */
+  --surface-3: #22222b;                    /* surface-3     */
+
+  /* -- borders ------------------------------------------------ */
+  --border: #2c2c37;
+  --border-subtle: #1f1f28;
+  --border-strong: #3a3a48;
+  --edge-highlight: rgba(255, 255, 255, 0.045); /* 1px inner top light */
+
+  /* -- text --------------------------------------------------- */
+  --text-primary: #f2f2f7;
+  --text-secondary: #9494ac;
+  --text-muted: #63637c;
+
+  /* -- accent (mint by default; modes override) ---------------- */
+  --accent: #5eead4;
+  --accent-dim: #2dd4a8;
+  --accent-muted: #12352c;
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 32%, transparent);
+  --accent-ink: #06231b;                   /* text on accent fills */
+  --mode-glow: #7d9bd4;                    /* aurora hue (neutral) */
+
+  /* -- states ------------------------------------------------- */
   --warning: #fbbf24;
   --danger: #f87171;
-  --text-primary: #f0f0f4;
-  --text-secondary: #8888a0;
-  --text-muted: #555568;
+  --success: #34d399;
   --streak: #f59e0b;
   --purple: #a78bfa;
   --blue: #60a5fa;
   --orange: #fb923c;
 
-  --radius-card: 12px;
-  --radius-btn: 8px;
-  --radius-chip: 6px;
+  /* -- shadows / depth ---------------------------------------- */
+  --shadow-card: inset 0 1px 0 var(--edge-highlight), 0 10px 26px -18px rgba(0, 0, 0, 0.85);
+  --shadow-raised: inset 0 1px 0 var(--edge-highlight), 0 16px 38px -16px rgba(0, 0, 0, 0.9);
+  --shadow-sheet: 0 -18px 60px -20px rgba(0, 0, 0, 0.9);
+
+  /* -- radii (rounder = softer material) ----------------------- */
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-chip: 10px;
   --radius-pill: 20px;
+
+  /* -- motion -------------------------------------------------- */
+  --motion-fast: 130ms;
+  --motion-normal: 210ms;
+  --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   --nav-bottom-height: 64px;
   --nav-top-height: 56px;
@@ -68,9 +104,11 @@ html {
   overscroll-behavior: none;
 }
 
+html { background: var(--bg-base); }
+
 body {
   font-family: var(--font-body);
-  background: var(--bg-primary);
+  background: transparent; /* base lives on <html>; aurora + grain sit between */
   color: var(--text-primary);
   font-size: 15px;
   line-height: 1.5;
@@ -79,6 +117,36 @@ body {
   touch-action: manipulation;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Aurora ambient field — a single fixed light source at the top of the
+   viewport whose hue follows the active mode. background-color transitions
+   smoothly (the radial shape lives in the mask), so switching modes reads
+   as the room's lighting changing, not a repaint. Cheap: one layer, no blur. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--mode-glow);
+  opacity: 0.14;
+  -webkit-mask-image: radial-gradient(120% 55% at 50% -10%, #000 0%, transparent 72%);
+          mask-image: radial-gradient(120% 55% at 50% -10%, #000 0%, transparent 72%);
+  transition: background-color 0.45s var(--ease-standard);
+}
+
+/* Static film grain — kills flat-black banding, adds material texture.
+   One tiled SVG turbulence layer at ~2.5%: no repaints, no JS, no blur. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
 }
 
 button {
@@ -355,7 +423,9 @@ code {
   display: flex;
   align-items: center;
   height: var(--nav-top-height);
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+          backdrop-filter: blur(14px) saturate(1.3);
   border-bottom: 1px solid var(--border-subtle);
   padding: 0 12px;
   flex-shrink: 0;
@@ -373,23 +443,27 @@ code {
   border-radius: var(--radius-pill);
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   letter-spacing: -0.2px;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
 }
 
-.mode-switcher:active { background: var(--bg-card); }
+.mode-switcher:active { background: var(--surface-3); transform: scale(0.97); }
 
 .mode-switcher-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 6px var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow), 0 0 3px var(--accent);
   flex-shrink: 0;
+  transition: background var(--motion-slow) var(--ease-standard);
 }
 
 .mode-switcher-chevron { color: var(--text-muted); flex-shrink: 0; }
@@ -432,43 +506,70 @@ code {
 /* ============================================================
    NAVIGATION — BOTTOM (mobile <768px)
    ============================================================ */
+/* Floating glass dock — detached from the screen edge so the app's content
+   glows behind it. One backdrop-filter element total (cheap). */
 .nav-bottom {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom));
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  left: 10px;
+  right: 10px;
+  height: var(--nav-bottom-height);
+  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+          backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 14px 34px -14px rgba(0, 0, 0, 0.85);
   display: flex;
-  align-items: flex-start;
-  padding-top: 8px;
-  padding-bottom: env(safe-area-inset-bottom);
+  align-items: center;
+  padding: 0 6px;
   z-index: 100;
 }
 
 .nav-bottom .nav-item {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 3px;
   padding: 6px 4px;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--text-muted);
-  transition: color 0.15s ease;
-  min-height: 44px;
+  transition: color var(--motion-normal) var(--ease-standard);
+  min-height: 52px;
+  border-radius: 18px;
 }
 
-.nav-bottom .nav-item.active {
-  color: var(--accent);
+/* Soft accent pill blooms in behind the active item. */
+.nav-bottom .nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 5px 4px;
+  border-radius: 15px;
+  background: var(--accent-soft);
+  opacity: 0;
+  transform: scale(0.72);
+  transition: opacity var(--motion-normal) var(--ease-out),
+              transform var(--motion-normal) var(--ease-out);
 }
+
+.nav-bottom .nav-item.active { color: var(--accent); }
+.nav-bottom .nav-item.active::before { opacity: 1; transform: scale(1); }
+
+.nav-bottom .nav-item:active .nav-icon { transform: translateY(1px) scale(0.92); }
 
 .nav-bottom .nav-icon {
   width: 20px;
   height: 20px;
+  position: relative;
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
+
+.nav-bottom .nav-item span { position: relative; }
 
 /* ============================================================
    TAB PANELS
@@ -484,7 +585,7 @@ code {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding: 16px;
-  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 8px);
+  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 34px);
 }
 
 /* ============================================================
@@ -498,20 +599,43 @@ code {
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   margin-bottom: 8px;
-  margin-top: 24px;
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* faint rule that bleeds off to the right — sections read as engraved bands */
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border-subtle), transparent);
 }
 
 .section-title:first-child { margin-top: 0; }
 
-/* Cards */
+/* Cards — layered obsidian: soft surface gradient, hairline border,
+   1px inner top light, deep soft drop. */
 .card {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, #ffffff 2%) 0%, var(--bg-card) 55%);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   padding: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-card);
+}
+
+/* The same inner top light for every card-like component that declares its
+   own background (one grouped rule instead of touching each block). */
+.habit-card, .streak-card, .chart-card, .week-summary-bar, .insight-item,
+.mh-task, .mh-entry, .mh-template, .mh-tool, .reset-item,
+.stim-stat, .school-session-card, .school-test-card, .school-test-mini,
+.home-quick-btn, .home-task, .home-nexttest, .home-train, .home-checkin,
+.home-mod-main, .custom-habit-row, .past-day-btn, .mode-menu-item,
+.split-day-card, .activity-habit-row, .sti-row, .setup-step {
+  box-shadow: var(--shadow-card);
 }
 
 /* Pill navigation */
@@ -526,19 +650,25 @@ code {
   font-size: 13px;
   font-weight: 500;
   padding: 6px 14px;
+  min-height: 34px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   background: transparent;
-  transition: all 0.15s ease;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
   white-space: nowrap;
 }
 
 .pill-btn.active {
-  background: var(--accent-muted);
-  border-color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   color: var(--accent);
 }
+
+.pill-btn:active { transform: scale(0.95); }
 
 .pill-btn:hover:not(.active) {
   border-color: var(--border);
@@ -556,35 +686,45 @@ code {
   border-radius: var(--radius-btn);
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
   min-height: 44px;
   cursor: pointer;
 }
 
+/* Primary — luminous accent slab: subtle vertical gradient + soft glow. */
 .btn-primary {
-  background: var(--accent);
-  color: #0d1f17;
-  font-weight: 600;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 6%) 0%, var(--accent) 45%, var(--accent-dim) 130%);
+  color: var(--accent-ink);
+  font-weight: 650;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 20px -8px var(--accent-glow);
 }
 
-.btn-primary:hover { background: var(--accent-dim); }
-.btn-primary:active { transform: scale(0.97); }
+.btn-primary:hover { filter: brightness(1.05); }
+.btn-primary:active { transform: scale(0.97); box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 3px 10px -6px var(--accent-glow); }
+.btn-primary:disabled { opacity: 0.45; box-shadow: none; transform: none; }
 
 .btn-ghost {
-  background: transparent;
-  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
   color: var(--text-secondary);
 }
 
-.btn-ghost:hover { border-color: var(--text-muted); color: var(--text-primary); }
+.btn-ghost:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.btn-ghost:active { transform: scale(0.97); background: var(--surface-3); }
 
 .btn-danger {
-  background: transparent;
-  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
   color: var(--danger);
 }
 
-.btn-danger:hover { background: rgba(248,113,113,0.1); }
+.btn-danger:hover { background: rgba(248,113,113,0.14); }
+.btn-danger:active { transform: scale(0.97); }
 
 .btn-text {
   background: transparent;
@@ -634,13 +774,14 @@ code {
 }
 
 .toggle-switch input:checked + .toggle-track {
-  background: var(--accent-muted);
-  border-color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .toggle-switch input:checked + .toggle-track + .toggle-thumb {
   transform: translateX(16px);
   background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 
 /* Chips */
@@ -782,20 +923,25 @@ code {
   border-radius: var(--radius-card);
   padding: 14px 16px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-normal) var(--ease-standard),
+              opacity var(--motion-slow) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
   user-select: none;
   -webkit-user-select: none;
 }
 
-.habit-card:active { background: var(--bg-elevated); }
+.habit-card:active { background: var(--bg-elevated); transform: scale(0.985); }
 
 .habit-card.completed {
-  opacity: 0.45;
+  opacity: 0.5;
+  background: linear-gradient(90deg, var(--accent-soft) 0%, var(--bg-card) 45%);
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
 }
 
 .habit-card.completed .habit-name {
   text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 65%, transparent);
   color: var(--text-muted);
 }
 
@@ -836,39 +982,56 @@ code {
 .habit-check {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 2px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.12s ease;
+  transition: background var(--motion-normal) var(--ease-standard),
+              border-color var(--motion-normal) var(--ease-standard),
+              box-shadow var(--motion-normal) var(--ease-standard);
   background: transparent;
 }
 
 .habit-card.completed .habit-check {
-  background: var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 6%), var(--accent));
   border-color: var(--accent);
+  box-shadow: 0 4px 14px -4px var(--accent-glow);
 }
 
 .habit-check-icon {
   width: 18px;
   height: 18px;
-  color: #0d1f17;
+  color: var(--accent-ink);
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .habit-card.completed .habit-check-icon { opacity: 1; }
 
+/* One-shot on the tapped check only (the .pulse hook): the box springs and
+   the checkmark draws itself stroke-first. Other completed rows never replay. */
+.habit-check-icon polyline { stroke-dasharray: 26; stroke-dashoffset: 0; }
+
 .habit-check.pulse {
-  animation: check-pulse 0.18s ease-out;
+  animation: check-spring 0.32s var(--ease-emphasized);
 }
 
-@keyframes check-pulse {
+.habit-check.pulse .habit-check-icon polyline {
+  animation: check-draw 0.3s var(--ease-out) 0.05s backwards;
+}
+
+@keyframes check-spring {
   0%   { transform: scale(1); }
-  50%  { transform: scale(1.25); }
+  40%  { transform: scale(1.18); }
+  70%  { transform: scale(0.96); }
   100% { transform: scale(1); }
+}
+
+@keyframes check-draw {
+  from { stroke-dashoffset: 26; }
+  to   { stroke-dashoffset: 0; }
 }
 
 /* All done message */
@@ -1670,14 +1833,27 @@ code {
   padding: 10px 14px;
   font-size: 15px;
   color: var(--text-primary);
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-normal) var(--ease-standard),
+              box-shadow var(--motion-normal) var(--ease-standard),
+              background var(--motion-normal) var(--ease-standard);
   outline: none;
   width: 100%;
   min-height: 44px;
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
 }
 
 .form-input:focus {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 0 0 3px var(--accent-soft);
+  background: var(--surface-3);
+}
+
+.form-input::placeholder { color: var(--text-muted); }
+
+/* Keyboard focus — visible everywhere without hijacking touch. */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 2px;
 }
 
 /* Day selector */
@@ -1841,11 +2017,12 @@ code {
 .modal-overlay {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(2, 2, 5, 0.66);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
   z-index: 200;
   opacity: 0;
-  animation: fade-in 0.2s ease-out forwards;
+  animation: fade-in 0.24s ease-out forwards;
 }
 
 @keyframes fade-in {
@@ -1870,29 +2047,48 @@ code {
 
 .modal-box {
   pointer-events: all;
-  background: var(--bg-surface);
+  position: relative;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 90%, #ffffff 2%) 0%, var(--bg-surface) 30%);
   border: 1px solid var(--border);
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border-bottom: none;
+  border-radius: 24px 24px 0 0;
+  box-shadow: inset 0 1px 0 var(--edge-highlight), var(--shadow-sheet);
   width: 100%;
   max-height: 85vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  animation: slide-up 0.22s ease-out;
-  padding: 20px 16px;
+  animation: slide-up 0.32s var(--ease-emphasized);
+  padding: 26px 16px 20px;
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+/* Sheet grab-handle — visual anchor that says "this is a sheet". */
+.modal-box::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
 }
 
 @media (min-width: 768px) {
   .modal-box {
     max-width: 480px;
-    border-radius: var(--radius-card);
+    border-radius: 20px;
+    border-bottom: 1px solid var(--border);
     animation: modal-pop 0.2s ease-out;
     max-height: 80vh;
+    padding-top: 20px;
   }
+  .modal-box::before { display: none; }
 }
 
 @keyframes slide-up {
-  from { transform: translateY(100%); opacity: 0; }
+  from { transform: translateY(60%); opacity: 0; }
   to   { transform: translateY(0);   opacity: 1; }
 }
 
@@ -2000,7 +2196,7 @@ code {
    ============================================================ */
 .toast-container {
   position: fixed;
-  bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 12px);
+  bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 26px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 300;
@@ -2020,32 +2216,33 @@ code {
 }
 
 .toast {
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--surface-3) 92%, transparent);
   border: 1px solid var(--border);
-  border-radius: var(--radius-btn);
-  padding: 10px 16px;
+  border-radius: 14px;
+  padding: 11px 16px;
   font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
   pointer-events: auto;
-  animation: toast-in 0.2s ease-out;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  animation: toast-in 0.28s var(--ease-emphasized);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 10px 30px -10px rgba(0,0,0,0.8);
   width: 100%;
 }
 
-.toast.error { border-color: var(--danger); color: var(--danger); }
-.toast.success { border-color: var(--accent); }
-.toast.warning { border-color: var(--warning); color: var(--warning); }
+.toast.error { border-color: color-mix(in srgb, var(--danger) 50%, transparent); color: var(--danger); }
+.toast.success { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.toast.warning { border-color: color-mix(in srgb, var(--warning) 50%, transparent); color: var(--warning); }
 
 .toast.removing {
   animation: toast-out 0.2s ease-in forwards;
 }
 
 @keyframes toast-in {
-  from { transform: translateY(12px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+  from { transform: translateY(14px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
 }
 
 @keyframes toast-out {
@@ -2327,10 +2524,27 @@ code {
    MODE THEMES — Mental Health gets a calmer blue/purple accent.
    Set on <body> so modals/toasts (outside #app) are themed too.
    ============================================================ */
+/* Home — neutral, adaptive: icy platinum light over the default mint accent. */
+body[data-mode="home"] {
+  --mode-glow: #93aede;
+}
+
+/* Physical — emerald: the strongest version of the app's own mint. */
+body[data-mode="physical"] {
+  --accent: #4ade9d;
+  --accent-dim: #22c47f;
+  --accent-muted: #123527;
+  --accent-ink: #052517;
+  --mode-glow: #34d399;
+}
+
+/* Mental — indigo/violet: calm, low-frequency light. */
 body[data-mode="mental"] {
   --accent: #8b9bf5;
   --accent-dim: #6f81e8;
   --accent-muted: #20254a;
+  --accent-ink: #10142e;
+  --mode-glow: #7c8cf0;
 }
 
 /* ============================================================
@@ -2338,11 +2552,12 @@ body[data-mode="mental"] {
    ============================================================ */
 .mode-menu { display: flex; flex-direction: column; gap: 8px; }
 
+/* Each row is staggered in as the sheet lands — quick, not theatrical. */
 .mode-menu-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 15px 16px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
@@ -2350,17 +2565,36 @@ body[data-mode="mental"] {
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
+  animation: rise-in 0.3s var(--ease-out) backwards;
 }
+.mode-menu-item:nth-child(2) { animation-delay: 30ms; }
+.mode-menu-item:nth-child(3) { animation-delay: 60ms; }
+.mode-menu-item:nth-child(4) { animation-delay: 90ms; }
+.mode-menu-item:nth-child(5) { animation-delay: 120ms; }
 
-.mode-menu-item.active { border-color: var(--accent); }
-.mode-menu-item:active { background: var(--bg-elevated); }
+.mode-menu-item.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: linear-gradient(90deg, var(--accent-soft) 0%, var(--bg-card) 65%);
+}
+.mode-menu-item:active { background: var(--bg-elevated); transform: scale(0.98); }
 .mode-menu-label { flex: 1; text-align: left; }
 .mode-menu-check { color: var(--accent); font-weight: 700; }
 
-.mode-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.mode-dot[data-mode-dot="physical"] { background: #6ee7b7; }
-.mode-dot[data-mode-dot="mental"]   { background: #8b9bf5; }
+.mode-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 0%, transparent);
+}
+.mode-dot[data-mode-dot="home"]     { background: #a8bce0; box-shadow: 0 0 8px rgba(168,188,224,0.5); }
+.mode-dot[data-mode-dot="physical"] { background: #5eead4; box-shadow: 0 0 8px rgba(94,234,212,0.5); }
+.mode-dot[data-mode-dot="mental"]   { background: #8b9bf5; box-shadow: 0 0 8px rgba(139,155,245,0.5); }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* ============================================================
    MENTAL HEALTH — shared page chrome
@@ -2501,18 +2735,37 @@ body[data-mode="stimulation"] {
   --accent: #f0c020;
   --accent-dim: #d9a916;
   --accent-muted: #332a0d;
+  --accent-ink: #251c02;
+  --mode-glow: #e8b418;
   --stim-productive: #46d39a;       /* green: productive activation, distinct from amber cheap-stim */
 }
-.mode-dot[data-mode-dot="stimulation"] { background: #f0c020; }
+.mode-dot[data-mode-dot="stimulation"] { background: #f0c020; box-shadow: 0 0 8px rgba(240,192,32,0.5); }
 
-/* Subtle fade applied to the content area on a mode switch. */
-@keyframes mode-fade { from { opacity: 0.4; } to { opacity: 1; } }
+/* Mode switch: content settles in with a slight rise — reads as arriving in a
+   new room while the aurora above re-lights. (Duration set in controller.js.) */
+@keyframes mode-fade {
+  from { opacity: 0.25; transform: translateY(6px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
 
-/* Dashboard view toggle (Cheap Stim · Productive) */
-.stim-seg { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-btn); }
-.stim-seg-btn { flex: 1; min-height: 40px; border-radius: calc(var(--radius-btn) - 4px); background: transparent; border: none; color: var(--text-secondary); font-size: 13px; font-weight: 500; transition: background 0.15s ease, color 0.15s ease; }
-.stim-seg-btn.active { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.25); }
-.stim-seg-btn:active { color: var(--text-primary); }
+/* Dashboard view toggle (Cheap Stim · Productive) — the active thumb reads
+   as a raised plate; color + shadow cross-fade so a switch feels like the
+   thumb sliding rather than two buttons swapping. */
+.stim-seg { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.35); }
+.stim-seg-btn {
+  flex: 1; min-height: 40px; border-radius: 10px; background: transparent; border: none;
+  color: var(--text-secondary); font-size: 13px; font-weight: 550;
+  transition: background var(--motion-normal) var(--ease-standard),
+              color var(--motion-normal) var(--ease-standard),
+              box-shadow var(--motion-normal) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
+}
+.stim-seg-btn.active {
+  background: linear-gradient(180deg, var(--surface-3), var(--bg-elevated));
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 2px 8px rgba(0,0,0,0.4);
+}
+.stim-seg-btn:active { transform: scale(0.97); }
 
 /* Dashboard chart */
 .stim-chart-card { padding: 12px 12px 8px; }
@@ -2648,8 +2901,10 @@ body[data-mode="school"] {
   --accent: #38bdf8;
   --accent-dim: #1ba3e0;
   --accent-muted: #0c2c3a;
+  --accent-ink: #052335;
+  --mode-glow: #2fa8ec;
 }
-.mode-dot[data-mode-dot="school"] { background: #38bdf8; }
+.mode-dot[data-mode-dot="school"] { background: #38bdf8; box-shadow: 0 0 8px rgba(56,189,248,0.5); }
 
 /* Risk colour tokens (shared by pills + readiness bars) */
 .school-pill.risk-low,    .school-readiness-fill.risk-low    { background: rgba(52,211,153,0.18); color: #34d399; }
@@ -3006,16 +3261,22 @@ body[data-mode="school"] {
 /* Mode FAB — thumb-reachable section switcher (tap = menu, hold = Home) */
 .mode-fab {
   position: fixed; left: 12px; z-index: 40;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--nav-bottom-height) + 24px);
   display: inline-flex; align-items: center; gap: 7px;
   padding: 8px 13px 8px 11px; border-radius: var(--radius-pill);
   background: var(--bg-elevated); border: 1px solid var(--border-subtle);
   color: var(--text-secondary); font-size: 12px; font-weight: 600;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.4); opacity: 0.82;
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 8px 22px -8px rgba(0,0,0,0.7);
+  opacity: 0.86;
+  transition: transform var(--motion-fast) var(--ease-standard), opacity var(--motion-fast) var(--ease-standard);
   touch-action: none; -webkit-user-select: none; user-select: none;
 }
-.mode-fab:active { opacity: 1; transform: scale(0.96); }
-.mode-fab-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.mode-fab:active { opacity: 1; transform: scale(0.95); }
+.mode-fab-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: background var(--motion-slow) var(--ease-standard);
+}
 .mode-fab-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 768px) { .mode-fab { bottom: 16px; } }
 
@@ -3095,6 +3356,171 @@ body[data-mode="school"] {
 .he-link-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin: 8px 0; }
 .he-link-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 .he-link #he-link-fields { margin-top: 6px; }
+
+/* ============================================================
+   OBSIDIAN INSTRUMENT — visual & motion redesign pass
+   Universal tactility · typography hierarchy · per-screen polish
+   (Purely presentational: no selectors here change behavior.)
+   ============================================================ */
+
+/* ---- universal tactile press ---------------------------------------------
+   Every chip / tile / small control shares one press language: a quick
+   ~3% scale dip. Immediate (no delay), transform-only (cheap). */
+.stim-chip, .ql-chip, .mh-tag, .mh-moodword, .mh-choice-btn, .mh-scale-btn,
+.mh-mood-btn, .day-toggle-btn, .he-cat, .he-sched-btn, .sti-cl-opt,
+.home-quick-btn, .home-mod-link, .stim-dur, .mh-sleep-quick, .mh-ttype,
+.mh-honesty-btn, .seg-btn, .stim-step-btn, .school-add-day, .school-btn,
+.past-day-btn, .home-mod-main, .mh-template, .mh-tool, .sti-place-btn,
+.school-test-card, .school-test-mini, .split-edit-toggle {
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard),
+              opacity var(--motion-fast) var(--ease-standard);
+}
+
+.stim-chip:active, .ql-chip:active, .mh-tag:active, .mh-moodword:active,
+.mh-choice-btn:active, .mh-scale-btn:active, .mh-mood-btn:active,
+.day-toggle-btn:active, .he-cat:active, .he-sched-btn:active,
+.sti-cl-opt:active, .home-quick-btn:active, .home-mod-link:active,
+.stim-dur:active, .mh-sleep-quick:active, .mh-ttype:active,
+.mh-honesty-btn:active, .seg-btn:active, .stim-step-btn:active,
+.school-add-day:active, .school-btn:active, .past-day-btn:active,
+.home-mod-main:active, .mh-template:active, .mh-tool:active,
+.sti-place-btn:active, .school-test-card:active, .school-test-mini:active {
+  transform: scale(0.96);
+}
+
+/* Selected chips get a quiet accent halo so state reads at a glance. */
+.mh-tag.selected, .mh-moodword.active, .mh-choice-btn.active,
+.day-toggle-btn.active, .he-cat.active, .he-sched-btn.active,
+.stim-dur.active, .mh-sleep-quick.active, .mh-ttype.active,
+.mh-honesty-btn.active, .sti-place-btn.active {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+              0 2px 10px -4px var(--accent-glow);
+}
+
+/* Static font weights loaded are 400/500/600 — pin the ones that matter. */
+.btn-primary { font-weight: 600; }
+.stim-seg-btn { font-weight: 600; }
+
+/* ---- typography hierarchy -------------------------------------------------
+   Page titles become human (Inter, tight tracking); mono stays for data,
+   timestamps, metrics and structural micro-labels. */
+.mh-title, .today-day {
+  font-family: var(--font-body);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.home-hello { font-size: 24px; letter-spacing: -0.02em; }
+
+/* Big data numbers breathe a little more. */
+.home-stim-score { font-size: 32px; letter-spacing: -0.01em; }
+.stim-stat-num { letter-spacing: -0.01em; }
+
+/* ---- shell details --------------------------------------------------------- */
+.offline-banner {
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.pin-logo, .setup-logo { text-shadow: 0 0 24px var(--accent-glow); }
+
+/* Progress ring — luminous fill */
+.progress-ring-fill { filter: drop-shadow(0 0 3px var(--accent-glow)); }
+
+/* Streak — warm ember */
+.streak-badge { text-shadow: 0 0 12px rgba(245, 158, 11, 0.35); }
+
+/* ---- HOME ------------------------------------------------------------------ */
+/* Stimulation status = the daily hero card: accent-edged, faintly lit. */
+.home-stim {
+  background: linear-gradient(155deg, var(--accent-soft) 0%, var(--bg-card) 42%);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
+  box-shadow: var(--shadow-raised);
+}
+
+/* Quick actions — tactile instrument keys */
+.home-quick-btn {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, #fff 2%), var(--bg-elevated));
+  border-radius: 14px;
+  gap: 6px;
+}
+.home-quick-ic { font-size: 19px; }
+
+.home-habit-num { text-shadow: 0 0 14px var(--accent-glow); }
+
+/* ---- LOG (stimulation + quick-log) ----------------------------------------- */
+.stim-step-btn { border-radius: 14px; }
+.stim-step-block { letter-spacing: 0.01em; }
+
+/* Current-block card gets a touch more presence than the picker below it. */
+.stim-block-entries { box-shadow: var(--shadow-raised); }
+
+/* Chips: selected/pressed states are already handled; keep category tint. */
+.stim-chip { box-shadow: inset 0 1px 0 var(--edge-highlight); }
+
+/* ---- REVIEW — calmer, reflective ------------------------------------------- */
+.rev-quality { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 94%, #fff 2%), var(--bg-card)); }
+.rev-hl { box-shadow: var(--shadow-card); }
+.rev-hl.good { background: linear-gradient(90deg, rgba(52,211,153,0.08), var(--bg-card) 60%); }
+.rev-hl.bad  { background: linear-gradient(90deg, rgba(248,113,113,0.07), var(--bg-card) 60%); }
+
+/* ---- STIMULATION dashboard -------------------------------------------------- */
+.stim-stat { box-shadow: var(--shadow-card); }
+.stim-target-card { background: linear-gradient(155deg, var(--accent-soft) 0%, var(--bg-card) 55%); }
+.stim-seg-pop {
+  background: color-mix(in srgb, var(--surface-3) 96%, transparent);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 14px 34px -10px rgba(0,0,0,0.75);
+}
+
+/* Chart settles in on first paint / metric switch — communicates data change. */
+.stim-chart-card svg, .chart-svg-wrap svg { animation: chart-in 0.32s var(--ease-out); }
+@keyframes chart-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- SCHOOL ------------------------------------------------------------------ */
+/* Subject color lights the card's left edge and bleeds faintly inward. */
+.school-session-card, .school-test-card {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--subject-color, var(--accent)) 5%, var(--bg-card)) 0%, var(--bg-card) 30%);
+}
+.school-session-card.is-done {
+  background: linear-gradient(90deg, rgba(52,211,153,0.06), var(--bg-card) 40%);
+}
+
+/* ---- MENTAL ------------------------------------------------------------------ */
+.mh-choice-btn { border-radius: 12px; }
+.mh-moodword { border-radius: var(--radius-pill); }
+.breath-circle { box-shadow: 0 0 40px -10px var(--accent-glow); }
+
+/* ---- WEEK ---------------------------------------------------------------------- */
+.week-day-col.today .week-day-body {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 4px 16px -8px var(--accent-glow);
+}
+
+/* ---- EMPTY STATES ---------------------------------------------------------------
+   Quiet, intentional: hairline dashed field instead of floating text. */
+.mh-empty, .all-done-msg {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+}
+
+/* ---- SETTINGS — quieter surface -------------------------------------------------
+   Settings rows stay flat; primary/destructive actions still stand out. */
+body [id="tab-settings"] .card { box-shadow: inset 0 1px 0 var(--edge-highlight); }
+
+/* ---- REDUCED MOTION extension: the global hammer above zeroes durations;
+   also pin the aurora + nav bloom still (no hue sweep, no scale). */
+@media (prefers-reduced-motion: reduce) {
+  body::before { transition: none; }
+  .nav-bottom .nav-item::before { transition: none; transform: scale(1); }
+  .habit-check.pulse, .habit-check.pulse .habit-check-icon polyline { animation: none; }
+}
 
 /* Advanced import (DONTDIE_SCREEN_TIME_IMPORT_V1) header + warnings + placement */
 .sti-adv-head { background: var(--bg-elevated); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
