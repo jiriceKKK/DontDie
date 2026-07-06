@@ -17,6 +17,8 @@ import { parseTextsImport } from '../texts/parser.js';
 import { GENERATION_PROMPT, buildFeedback, FEEDBACK_SCOPES } from '../texts/prompts.js';
 import { openReader } from '../texts/reader.js';
 import { openHighlightsViewer } from '../texts/highlights.js';
+import { bookWordsTotal } from '../texts/books.js';
+import { booksSectionHtml, wireBooks } from '../texts/booksUI.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtInt = n => Number(n || 0).toLocaleString('en-US');
@@ -56,11 +58,21 @@ export function renderTexts() {
       <div class="mh-subtitle">Read one, reflect, repeat</div>
     </div>`;
 
+  // Combined words-read = exact generated-text words + estimated physical-book
+  // words. Book words are clearly marked estimated (≈). Reading time stays
+  // generated-text-only and is labelled so it never implies book time.
+  const genWords = s.wordsRead;
+  const bookWords = bookWordsTotal();
+  const combined = genWords + bookWords;
+  const breakdown = bookWords > 0
+    ? `<div class="tx-breakdown">${fmtInt(genWords)} generated texts · ≈${fmtInt(bookWords)} books</div>`
+    : '';
   const hero = `
     <div class="card tx-hero">
-      <div class="tx-words">${fmtInt(s.wordsRead)}</div>
+      <div class="tx-words">${fmtInt(combined)}</div>
       <div class="tx-words-label">words read</div>
-      <div class="tx-time">${fmtReadTime(s.readingSeconds)} reading</div>
+      ${breakdown}
+      <div class="tx-time">${fmtReadTime(s.readingSeconds)} in-app reading</div>
     </div>`;
 
   const intro = totallyEmpty ? `
@@ -100,9 +112,11 @@ export function renderTexts() {
     </div>`;
 
   const topicsCard = topicsSection(topics);
+  const books = booksSectionHtml();
 
-  panel.innerHTML = header + hero + intro + queue + stats + tools + topicsCard;
+  panel.innerHTML = header + hero + intro + queue + stats + books + tools + topicsCard;
   wire(panel);
+  wireBooks(panel, () => renderTexts());
 }
 
 function topicsSection(topics) {

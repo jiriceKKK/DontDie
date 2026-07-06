@@ -216,8 +216,10 @@ ${list(vol, v => `- ${v.name}: ${v.direct}${v.indirect ? ` (+${v.indirect})` : '
 
 function mentalSection(M) {
   const T = M.texts || null;
+  const books = (T && Array.isArray(T.books)) ? T.books : [];
   const hasTexts = T && (T.textsCompleted || T.unread || T.highlightsSaved);
-  if (!M.coverage && !M.taskTotal && !M.journalCount && !hasTexts) return `## Mind summary\n\n_No Mind data in this range._`;
+  const hasBooks = books.length > 0;
+  if (!M.coverage && !M.taskTotal && !M.journalCount && !hasTexts && !hasBooks) return `## Mind summary\n\n_No Mind data in this range._`;
   const ml = (label, key, suffix = '/5') => M.averages[key] == null ? `- ${label}: — (no data)` : `- ${label}: ${num(M.averages[key])}${suffix}${trendArrow(M.trend[key])}`;
   const textsLines = hasTexts ? `
 
@@ -225,6 +227,11 @@ function mentalSection(M) {
 - Completed: ${T.textsCompleted} · words read: ${T.wordsRead} · reading time: ${Math.round((T.readingSeconds || 0) / 60)} min · unread queue: ${T.unread} · highlights saved: ${T.highlightsSaved}.
 - Average ratings: engagement ${num(T.avgEngagement)}/10 · learning ${num(T.avgLearning)}/10 · relevance ${num(T.avgRelevance)}/10.
 - Top topics: ${T.topTopics && T.topTopics.length ? T.topTopics.slice(0, 5).map(t => `${t.topic} (${t.count})`).join(', ') : 'none yet'}.` : '';
+  const bookLines = hasBooks ? `
+
+**Physical books** (word counts are ESTIMATES from page × words-per-page, not exact; book reading time is not tracked):
+- Estimated book words read: ≈${T.bookWords || 0} · book goals reached: ${T.bookGoalsReached || 0}.
+${list(books, bk => `- ${bk.title}${bk.author ? ` — ${bk.author}` : ''}: page ${bk.currentPage}/${bk.totalPages} (${bk.progressPercent}%), ≈${bk.estimatedWordsRead} words, ${bk.status}${bk.goalsReached ? `, ${bk.goalsReached} goal(s) reached` : ''}`, 'None.')}` : '';
   return `## Mind summary
 
 - Check-in coverage: ${M.coverage}/${M.days} days.
@@ -236,7 +243,7 @@ ${ml('Sleep quality', 'sleep')}
 ${ml('Social', 'social')}
 - Most common tags: ${M.tags.length ? M.tags.slice(0, 6).map(t => `${t.tag} (${t.count})`).join(', ') : 'none'}.
 - Task completion: ${M.taskTotal ? `${M.taskDone}/${M.taskTotal} (${pct(M.taskTotal ? M.taskDone / M.taskTotal * 100 : 0)})` : 'no tasks'}.
-- Journal entries: ${M.journalCount}${M.journalCount ? ` (${Object.entries(M.journalByType).map(([t, c]) => `${t}: ${c}`).join(', ')})` : ''}.${textsLines}
+- Journal entries: ${M.journalCount}${M.journalCount ? ` (${Object.entries(M.journalByType).map(([t, c]) => `${t}: ${c}`).join(', ')})` : ''}.${textsLines}${bookLines}
 
 (Trend = second half of the range vs first half. Summaries only — no advice or diagnosis.)`;
 }

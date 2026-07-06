@@ -12,6 +12,7 @@ import { state } from '../state.js';
 import { BUILT_IN_HABITS } from '../constants.js';
 import { formatDate, today, addDays, parseDate } from '../utils/date.js';
 import { statsSummary, topTopics, getMindTexts } from '../mental/texts/store.js';
+import { bookStats, estimatedWordsForBook, bookProgressPercent } from '../mental/texts/books.js';
 
 export const APP_VERSION = '1.0.0';
 export const EXPORT_VERSION = 1;
@@ -87,12 +88,24 @@ export function collectMental(b) {
 // reflection exports. (Full bodies live in the backup only — see below.)
 export function collectMindTextsSummary() {
   if (!state.mindTexts) {
-    return { textsCompleted: 0, wordsRead: 0, readingSeconds: 0, unread: 0, highlightsSaved: 0, avgEngagement: null, avgLearning: null, avgRelevance: null, topTopics: [] };
+    return { textsCompleted: 0, wordsRead: 0, readingSeconds: 0, unread: 0, highlightsSaved: 0, avgEngagement: null, avgLearning: null, avgRelevance: null, topTopics: [], books: [], bookWords: 0, bookGoalsReached: 0 };
   }
   const s = statsSummary();
+  // Compact, privacy-safe book summary — metadata + progress only, NO book text.
+  const bs = bookStats();
+  const books = (state.mindTexts.books || []).map(bk => ({
+    title: bk.title,
+    author: bk.author || null,
+    progressPercent: Math.round(bookProgressPercent(bk) * 10) / 10,
+    currentPage: bk.currentPage,
+    totalPages: bk.totalPages,
+    estimatedWordsRead: estimatedWordsForBook(bk),
+    status: bk.status,
+    goalsReached: (bk.goals || []).filter(g => g.status === 'reached').length,
+  }));
   return {
     textsCompleted: s.textsCompleted,
-    wordsRead: s.wordsRead,
+    wordsRead: s.wordsRead,             // exact, completed generated texts
     readingSeconds: s.readingSeconds,
     unread: s.unread,
     highlightsSaved: s.highlightsSaved,
@@ -103,6 +116,9 @@ export function collectMindTextsSummary() {
       topic: t.topic, count: t.count, words: t.words,
       avgEngagement: t.avgEngagement, avgLearning: t.avgLearning, avgRelevance: t.avgRelevance, more: t.more,
     })),
+    books,                              // compact per-book summary (no text)
+    bookWords: bs.bookWords,            // estimated
+    bookGoalsReached: bs.goalsReached,
   };
 }
 

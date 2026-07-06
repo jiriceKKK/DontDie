@@ -181,6 +181,33 @@ batch adapts to you.
   bodies + highlights are included in the raw **backup** export only; the general
   AI-reflection export carries just a privacy-safe summary.
 
+#### Books (physical reading)
+
+A compact section inside Texts for tracking physical books — it never disrupts
+the generated-text workflow above it.
+
+- **Add a book** with total pages, estimated words/page and current page.
+  Optionally *count pages already read* (creates one explicit baseline event);
+  by default the current page is just a baseline and only future reading counts.
+- **Update progress** logs a page delta once as a progress event and estimates
+  `pageDelta × words/page`. Those estimated words join the big words-read total,
+  shown as `generated texts · ≈books` (book words are always marked `≈`
+  estimated). Re-submitting the same page or refreshing never double-counts —
+  words live inside stored events.
+- **Correct current page** is a distinct action that edits the latest event's
+  end page (never adds fresh reading); **Delete latest** removes an event and
+  restores the page.
+- **Goals / milestones** — percentage (standard 25/50/75/100, on by default) or
+  page targets. Each reaches exactly once, with a restrained grouped toast;
+  completion is one combined message. A correction below a reached milestone
+  keeps it historically reached (only an explicit *Reset* reactivates it).
+- **Reading time is generated-text only** (labelled "in-app reading"); physical
+  book time is never invented, and there is no words-per-minute.
+- Stored in the same Texts store (`schemaVersion: 2`, `books: []`); old data
+  without books normalizes safely to an empty list. Full book data (events +
+  goals) is in the backup export; the reflection export carries a compact,
+  text-free per-book summary.
+
 ### School
 
 A **science-based study planner** for preparing for tests — not a calendar or

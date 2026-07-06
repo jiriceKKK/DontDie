@@ -19,7 +19,7 @@ import { dbSaveMindTextsStore } from '../../db.js';
 import { showToast } from '../../ui/toast.js';
 
 const LS_KEY = 'dontdie_mind_texts_v1';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const STATUSES = ['unread', 'reading', 'reflection', 'completed'];
 
 let _cloudOk = true;
@@ -40,9 +40,19 @@ function emptyData() {
     batches: [],
     texts: [],
     currentTextId: null,
+    books: [],
     lastFeedbackExportAt: null,
   };
 }
+
+// Shared id + time helpers exported for the books module (keeps id prefixes
+// and normalization consistent across the two files).
+export function bookUid(prefix) {
+  const rnd = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36));
+  return (prefix || 'id_') + rnd;
+}
+export const nowIsoExport = nowIso;
+export const numOrExport = numOr;
 
 // ---- persistence ----------------------------------------------------------
 
@@ -95,11 +105,69 @@ function normalizeHighlight(h) {
   };
 }
 
+// ---- physical books: safe normalization ----------------------------------
+const BOOK_STATUSES = ['active', 'completed', 'archived'];
+const GOAL_STATUSES = ['active', 'reached', 'disabled'];
+const intOr = (v, d = 0) => Math.round(numOr(v, d));
+
+function normalizeEvent(e) {
+  if (!e || typeof e !== 'object') e = {};
+  const fromPage = Math.max(0, intOr(e.fromPage, 0));
+  const toPage = Math.max(0, intOr(e.toPage, fromPage));
+  const pageDelta = Math.max(0, toPage - fromPage);
+  const wpp = Math.max(0, intOr(e.wordsPerPageSnapshot, 0));
+  return {
+    id: e.id || bookUid('book_progress_'),
+    kind: e.kind === 'initial' ? 'initial' : 'progress',
+    fromPage, toPage, pageDelta,
+    wordsPerPageSnapshot: wpp,
+    estimatedWords: Math.max(0, intOr(e.estimatedWords, pageDelta * wpp)),
+    createdAt: e.createdAt || nowIso(),
+  };
+}
+
+function normalizeGoal(g) {
+  if (!g || typeof g !== 'object') g = {};
+  return {
+    id: g.id || bookUid('book_goal_'),
+    type: g.type === 'page' ? 'page' : 'percentage',
+    targetValue: Math.max(0, numOr(g.targetValue, 0)),
+    label: typeof g.label === 'string' ? g.label : '',
+    status: GOAL_STATUSES.includes(g.status) ? g.status : 'active',
+    createdAt: g.createdAt || nowIso(),
+    reachedAt: g.reachedAt || null,
+  };
+}
+
+export function normalizeBook(b) {
+  if (!b || typeof b !== 'object') b = {};
+  const totalPages = Math.max(1, intOr(b.totalPages, 1));
+  const currentPage = Math.min(totalPages, Math.max(0, intOr(b.currentPage, 0)));
+  return {
+    id: b.id || bookUid('book_'),
+    title: typeof b.title === 'string' ? b.title : '',
+    author: typeof b.author === 'string' ? b.author : '',
+    totalPages,
+    defaultWordsPerPage: Math.max(1, intOr(b.defaultWordsPerPage, 300)),
+    currentPage,
+    baselinePage: Math.min(totalPages, Math.max(0, intOr(b.baselinePage, currentPage))),
+    status: BOOK_STATUSES.includes(b.status) ? b.status : 'active',
+    createdAt: b.createdAt || nowIso(),
+    updatedAt: b.updatedAt || b.createdAt || nowIso(),
+    completedAt: b.completedAt || null,
+    progressEvents: Array.isArray(b.progressEvents) ? b.progressEvents.filter(e => e && typeof e === 'object').map(normalizeEvent) : [],
+    goals: Array.isArray(b.goals) ? b.goals.filter(g => g && typeof g === 'object').map(normalizeGoal) : [],
+  };
+}
+
 function normalize(d) {
   if (!d || typeof d !== 'object') d = emptyData();
   d.schemaVersion = SCHEMA_VERSION;
   if (!Array.isArray(d.batches)) d.batches = [];
   d.texts = Array.isArray(d.texts) ? d.texts.map(normalizeText) : [];
+  // Books (added in schemaVersion 2). Old data without `books` becomes []; the
+  // generated-text queue, highlights and reflections above are untouched.
+  d.books = Array.isArray(d.books) ? d.books.map(normalizeBook) : [];
   if (typeof d.lastFeedbackExportAt !== 'string') d.lastFeedbackExportAt = d.lastFeedbackExportAt || null;
   // currentTextId must point at a real, still-open text.
   const cur = d.texts.find(t => t.id === d.currentTextId);
