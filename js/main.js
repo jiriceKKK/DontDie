@@ -3,11 +3,12 @@ import { formatDate, today, getNDaysAgo } from './utils/date.js';
 import {
   dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection,
   dbGetSplitConfig, dbGetMentalStore, dbGetStimulationStore, dbGetSchoolStore,
-  dbGetHabitConfig,
+  dbGetHabitConfig, dbGetMindTextsStore,
 } from './db.js';
 import { initHabitConfig } from './habitConfig.js';
 import { initSplit } from './split/store.js';
 import { initMental } from './mental/store.js';
+import { initMindTexts } from './mental/texts/store.js';
 import { initStimulation } from './stimulation/store.js';
 import { initSchool } from './school/store.js';
 import { initSwipe } from './navigation.js';
@@ -40,7 +41,7 @@ async function startApp() {
   const rangeEnd   = formatDate(today());
   const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
 
-  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes, habitCfgRes] = await Promise.all([
+  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes, habitCfgRes, mindTextsRes] = await Promise.all([
     dbGetLogsForRange(rangeStart, rangeEnd),
     dbGetCustomHabits(),
     dbCheckConnection(),
@@ -49,6 +50,7 @@ async function startApp() {
     dbGetStimulationStore(),
     dbGetSchoolStore(),
     dbGetHabitConfig(),
+    dbGetMindTextsStore(),
   ]);
 
   state.logsByDate   = logsRes.data   || {};
@@ -63,6 +65,7 @@ async function startApp() {
   // Seed/load split + mental + stimulation + school data (cloud → local → default).
   initSplit(splitRes.data);
   initMental(mentalRes.data);
+  initMindTexts(mindTextsRes.data);
   initStimulation(stimRes.data);
   initSchool(schoolRes.data);
 

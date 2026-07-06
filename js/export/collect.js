@@ -11,6 +11,7 @@
 import { state } from '../state.js';
 import { BUILT_IN_HABITS } from '../constants.js';
 import { formatDate, today, addDays, parseDate } from '../utils/date.js';
+import { statsSummary, topTopics, getMindTexts } from '../mental/texts/store.js';
 
 export const APP_VERSION = '1.0.0';
 export const EXPORT_VERSION = 1;
@@ -77,7 +78,38 @@ export function collectMental(b) {
     checkins: filterDateMap(m.checkins, b),
     tasks: clone((m.tasks || []).filter(t => inRange(t.date, b))),
     journal: clone((m.journal || []).filter(j => inRange(j.date, b))),
+    texts: collectMindTextsSummary(),   // privacy-safe summary (no article bodies)
   };
+}
+
+// Privacy-safe Mind · Texts summary: aggregate metrics + topic preferences,
+// NO article bodies and NO highlight quotes. Safe to include in general
+// reflection exports. (Full bodies live in the backup only — see below.)
+export function collectMindTextsSummary() {
+  if (!state.mindTexts) {
+    return { textsCompleted: 0, wordsRead: 0, readingSeconds: 0, unread: 0, highlightsSaved: 0, avgEngagement: null, avgLearning: null, avgRelevance: null, topTopics: [] };
+  }
+  const s = statsSummary();
+  return {
+    textsCompleted: s.textsCompleted,
+    wordsRead: s.wordsRead,
+    readingSeconds: s.readingSeconds,
+    unread: s.unread,
+    highlightsSaved: s.highlightsSaved,
+    avgEngagement: s.avgEngagement,
+    avgLearning: s.avgLearning,
+    avgRelevance: s.avgRelevance,
+    topTopics: topTopics().slice(0, 8).map(t => ({
+      topic: t.topic, count: t.count, words: t.words,
+      avgEngagement: t.avgEngagement, avgLearning: t.avgLearning, avgRelevance: t.avgRelevance, more: t.more,
+    })),
+  };
+}
+
+// FULL Mind · Texts library incl. article bodies + highlights + reflections.
+// Used ONLY by the raw backup export — never by the reflection summary.
+export function collectMindTextsFull() {
+  return clone(getMindTexts() || null);
 }
 
 export function collectStimulation(b) {

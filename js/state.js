@@ -6,6 +6,7 @@ export const state = {
   modeTabs: [],              // ordered tab ids of the active mode (set by mode controller)
   modeLastTab: {},           // { modeId: lastTabId } — remembers your page per mode
   mental: null,              // mental-health data (loaded by js/mental/store.js)
+  mindTexts: null,           // Mind · Texts reading library (loaded by js/mental/texts/store.js)
   stimulation: null,         // stimulation data (loaded by js/stimulation/store.js)
   stimDate: null,            // Log page: which day is being edited (set by the tab)
   stimBlock: 0,              // Log page: current block index in the stepper

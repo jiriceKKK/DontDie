@@ -24,8 +24,9 @@ A **mode switcher** (top-left) and the Modules page open the deep modules, each
 with its own ordered tabs, accent theme and mobile swipe navigation:
 
 - **Physical Health** (green) — Today · Week · Stats · Split · Settings
-- **Mental Health** (calm blue) — Check-in · Tasks · Journal · Stats
-  (check-in uses anchored scales, a 1–100 sleep score, and an honesty nudge)
+- **Mind** (calm indigo) — Check-in · Tasks · Texts · Journal · Stats
+  (check-in uses anchored scales, a 1–100 sleep score, and an honesty nudge;
+  internal mode id / storage stays `mental` to avoid data migrations)
 - **Stimulation** (amber) — Dashboard · Log · Activities · Stats · Settings
 - **School** (sky blue) — Today · Plan · Tests · Results · Settings
 
@@ -130,14 +131,55 @@ exists, and Screen Time import treats habit-linked minutes as already logged.
 - **Split tab** — editable, data-driven weekly plan (Full Week / Gym Only / Mobility) with an in-tab edit mode, a reusable exercise library, and a dynamic weekly-volume summary (direct + indirect sets)
 - **Settings tab** — add custom habits, manage built-ins, export/clear data
 
-### Mental Health
+### Mind
+
+(User-facing name is **Mind**; the internal mode id, folder `js/mental/` and
+storage keys stay `mental` so no data/import migration is needed.)
 
 - **Check-in** — one entry per day: mood (emoji + score) plus 1–5 scales for stress, tension, energy, sleep and social, with quick tags and a one-line note
 - **Tasks** — temporary, date-based to-dos (Today / Tomorrow), pending/done — not habits
+- **Texts** — a guided educational reading habit (see below)
 - **Journal** — guided templates (quick reflection, CBT thought record, stress dump, trigger log, what helped / what made it worse, tomorrow reset)
 - **Stats** — factual patterns only: mood/stress/energy trends, a per-day task-completion chart, tasks-vs-mood, sleep vs mood, top tags, best/worst weekday, recent-change summary
 
-Mental Health is data-based and non-clinical — no diagnoses, no advice, no filler.
+Mind is data-based and non-clinical — no diagnoses, no advice, no filler.
+
+#### Texts (guided reading)
+
+A quiet reading system. The app **never calls an AI** — it only generates a
+prompt, imports structured text produced in your own ChatGPT/Claude chat, stores
+it, shows it one at a time, and exports feedback.
+
+Workflow: **Copy generation prompt → paste into your AI chat → paste the five
+texts it returns back into the app → Read → tap words / hold sentences to
+highlight → submit a short reflection → later Copy feedback for AI** so the next
+batch adapts to you.
+
+- **No title browsing.** The queue serves one text at a time in a stable,
+  randomized order. A text in progress is *locked* — you continue it, you can't
+  skip to another. A completed text never returns.
+- **Reader** — focused, single text, comfortable typography for long Czech text,
+  restores scroll position, saves progress. Simple elapsed reading time only
+  (visible-tab, reading-step only; stops at reflection). No words-per-minute.
+- **Highlighting** — one subtle style. Tap a word to toggle it; press-and-hold
+  (~460 ms) or double-click a sentence to toggle the whole line. Stored as stable
+  `{paragraph, sentence, word}` coordinates, not DOM references.
+- **Reflection** is the only completion path — engagement / learning / relevance
+  (1–10 with anchor labels), difficulty, length fit, more-like-this, optional note.
+- **Highlights viewer** — a vertical scroll-snap reel; each card centres one
+  saved highlight with surrounding context fading above and below.
+- **Import format** `DONTDIE_TEXTS_IMPORT_V1` — JSON after the marker; schema keys
+  stay English, titles/paragraphs use the conversation's language. The app finds
+  the block even amid prose, validates it, computes its own word counts and ids,
+  and dedupes by a content fingerprint (re-importing the same batch adds nothing).
+- **Feedback format** `DONTDIE_TEXTS_FEEDBACK_V1` — an English preamble + JSON of
+  ratings, reading time and highlighted quotes. Scopes: new-since-last-export
+  (default), current batch, or all completed.
+- **Persistence** — dedicated store, localStorage key `dontdie_mind_texts_v1`,
+  best-effort sync to the optional `mind_texts_store` Supabase table. If that
+  table is absent, Texts works fully offline from localStorage. Full article
+  bodies + highlights are included in the raw **backup** export only; the general
+  AI-reflection export carries just a privacy-safe summary.
 
 ### School
 
@@ -286,6 +328,15 @@ CREATE TABLE habit_config (
   CONSTRAINT habit_config_singleton CHECK (id = 1)
 );
 
+-- OPTIONAL: Mind · Texts reading library (single JSON document).
+-- If you skip this table, Texts still works fully from localStorage.
+CREATE TABLE mind_texts_store (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT mind_texts_store_singleton CHECK (id = 1)
+);
+
 ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
@@ -293,6 +344,7 @@ ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stimulation_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_store ENABLE ROW LEVEL SECURITY;
 ALTER TABLE habit_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mind_texts_store ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
@@ -301,6 +353,7 @@ CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHE
 CREATE POLICY "Allow all anon" ON stimulation_store FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON school_store FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all anon" ON habit_config FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all anon" ON mind_texts_store FOR ALL TO anon USING (true) WITH CHECK (true);
 ```
 
 > The `split_config`, `mh_store`, `stimulation_store`, `school_store` and
@@ -388,10 +441,16 @@ js/
   modes/
     registry.js     — the mode list + their tabs (add a new mode here)
     controller.js   — setMode(), builds nav + panels, mode switcher menu
-  mental/
-    store.js        — Mental Health data: load/seed/save + CRUD + stats helpers
+  mental/           — the "Mind" mode (id stays `mental`)
+    store.js        — check-ins / tasks / journal: load/seed/save + CRUD + stats helpers
     journalTemplates.js — guided journal template definitions
-    tabs/           — checkin · tasks · journal · stats
+    texts/          — guided reading system (Texts tab)
+      store.js      — reading library: queue, progress, highlights, reflections, stats
+      parser.js     — DONTDIE_TEXTS_IMPORT_V1 parse + fingerprint + tokenizer
+      prompts.js    — generation prompt + DONTDIE_TEXTS_FEEDBACK_V1 export
+      reader.js     — focused reader overlay: reading timer, progress, reflection
+      highlights.js — token render, tap/hold highlighting, highlights reel viewer
+    tabs/           — checkin · tasks · texts · journal · stats
   stimulation/
     store.js        — Stimulation data: load/seed/save + CRUD + load/baseline calc + parser + entry sources/link/import helpers
     screenTime.js   — Screen Time import model: tolerant parser, app→category mappings, snapshot reconciliation, duplicate detection

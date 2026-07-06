@@ -1,7 +1,7 @@
 // Backup export — raw, complete, machine-readable JSON of all module data.
 // Always "all time". No config secrets / PIN / auth are ever included.
 
-import { collectAll, rangeBounds, APP_VERSION, EXPORT_VERSION } from './collect.js';
+import { collectAll, collectMindTextsFull, rangeBounds, APP_VERSION, EXPORT_VERSION } from './collect.js';
 
 export function buildBackup() {
   const b = rangeBounds('all');
@@ -16,6 +16,9 @@ export function buildBackup() {
     mental: data.mental,
     stimulation: data.stimulation,
     school: data.school,
+    // Full Mind · Texts library (article bodies, highlights, reflections).
+    // Backup only — the reflection export carries just the safe summary.
+    mindTexts: collectMindTextsFull(),
     metadata: { notes: 'Raw backup export. Not intended as medical or diagnostic data.' },
   }, null, 2);
 }

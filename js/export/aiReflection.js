@@ -88,6 +88,7 @@ function mentalSummary(b, raw) {
     taskTotal: raw.tasks.length,
     journalCount: raw.journal.length,
     journalByType: jType,
+    texts: raw.texts || null,   // privacy-safe Texts summary (no bodies)
   };
 }
 
@@ -153,12 +154,13 @@ const EXPLANATIONS = `## Module explanations
 - "Split" is the **planned** training program (gym sessions + mobility), not a record of completed workouts.
 - Gym volume below is **planned** weekly volume (sets per muscle) derived from the split, not performed volume.
 
-### Mental Health
+### Mind
 - Check-ins are self-reported, at most once per day.
 - mood / stress / anxiety / energy / sleep / social are subjective 1–5 ratings (mood may be shown as an emoji + score).
 - Tags are user-selected context labels.
 - Tasks are temporary, day-based to-dos — not recurring habits.
 - Journal entries are free text written into guided templates.
+- Texts is a guided reading habit: AI-generated educational texts the user reads and rates (engagement / learning / relevance 1–10). Only a privacy-safe summary is included here — no article bodies or highlight quotes.
 
 ### Stimulation
 - This is a behaviour-based **estimate**, NOT a dopamine or biological measurement.
@@ -213,9 +215,17 @@ ${list(vol, v => `- ${v.name}: ${v.direct}${v.indirect ? ` (+${v.indirect})` : '
 }
 
 function mentalSection(M) {
-  if (!M.coverage && !M.taskTotal && !M.journalCount) return `## Mental Health summary\n\n_No mental check-ins in this range._`;
+  const T = M.texts || null;
+  const hasTexts = T && (T.textsCompleted || T.unread || T.highlightsSaved);
+  if (!M.coverage && !M.taskTotal && !M.journalCount && !hasTexts) return `## Mind summary\n\n_No Mind data in this range._`;
   const ml = (label, key, suffix = '/5') => M.averages[key] == null ? `- ${label}: — (no data)` : `- ${label}: ${num(M.averages[key])}${suffix}${trendArrow(M.trend[key])}`;
-  return `## Mental Health summary
+  const textsLines = hasTexts ? `
+
+**Texts (guided reading):**
+- Completed: ${T.textsCompleted} · words read: ${T.wordsRead} · reading time: ${Math.round((T.readingSeconds || 0) / 60)} min · unread queue: ${T.unread} · highlights saved: ${T.highlightsSaved}.
+- Average ratings: engagement ${num(T.avgEngagement)}/10 · learning ${num(T.avgLearning)}/10 · relevance ${num(T.avgRelevance)}/10.
+- Top topics: ${T.topTopics && T.topTopics.length ? T.topTopics.slice(0, 5).map(t => `${t.topic} (${t.count})`).join(', ') : 'none yet'}.` : '';
+  return `## Mind summary
 
 - Check-in coverage: ${M.coverage}/${M.days} days.
 ${ml('Mood', 'mood')}
@@ -226,7 +236,7 @@ ${ml('Sleep quality', 'sleep')}
 ${ml('Social', 'social')}
 - Most common tags: ${M.tags.length ? M.tags.slice(0, 6).map(t => `${t.tag} (${t.count})`).join(', ') : 'none'}.
 - Task completion: ${M.taskTotal ? `${M.taskDone}/${M.taskTotal} (${pct(M.taskTotal ? M.taskDone / M.taskTotal * 100 : 0)})` : 'no tasks'}.
-- Journal entries: ${M.journalCount}${M.journalCount ? ` (${Object.entries(M.journalByType).map(([t, c]) => `${t}: ${c}`).join(', ')})` : ''}.
+- Journal entries: ${M.journalCount}${M.journalCount ? ` (${Object.entries(M.journalByType).map(([t, c]) => `${t}: ${c}`).join(', ')})` : ''}.${textsLines}
 
 (Trend = second half of the range vs first half. Summaries only — no advice or diagnosis.)`;
 }

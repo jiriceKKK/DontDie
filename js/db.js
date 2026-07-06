@@ -215,6 +215,41 @@ export async function dbSaveMentalStore(mhData) {
   }
 }
 
+// ---- Mind · Texts library (single-row JSON document) ----------------------
+// Optional table. Same graceful pattern as split_config / habit_config: returns
+// null if the table is absent, so Texts works fully from localStorage and a
+// missing table never breaks startup. SQL to enable cloud sync is in README.
+export async function dbGetMindTextsStore() {
+  try {
+    const { data, error } = await getSupabase()
+      .from('mind_texts_store')
+      .select('data')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    return { data: data ? data.data : null, error: null };
+  } catch (err) {
+    console.error('[db] getMindTextsStore:', err);
+    return { data: null, error: err };
+  }
+}
+
+export async function dbSaveMindTextsStore(textsData) {
+  try {
+    const { error } = await getSupabase()
+      .from('mind_texts_store')
+      .upsert(
+        { id: 1, data: textsData, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) throw error;
+    return { error: null };
+  } catch (err) {
+    console.error('[db] saveMindTextsStore:', err);
+    return { error: err };
+  }
+}
+
 // ---- stimulation data (single-row JSON document) --------------------------
 export async function dbGetStimulationStore() {
   try {

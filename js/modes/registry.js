@@ -21,9 +21,10 @@ import { renderStats } from '../tabs/stats.js';
 import { renderSplit } from '../tabs/split.js';
 import { renderSettings } from '../tabs/settings.js';
 
-// Mental Health
+// Mind (internal id stays "mental" to avoid data/import migrations)
 import { renderCheckin } from '../mental/tabs/checkin.js';
 import { renderTasks } from '../mental/tabs/tasks.js';
+import { renderTexts } from '../mental/tabs/texts.js';
 import { renderJournal } from '../mental/tabs/journal.js';
 import { renderMentalStats } from '../mental/tabs/stats.js';
 
@@ -62,6 +63,7 @@ const ICON = {
   bolt:     '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   grid:     '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
   pulse:    '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  reader:   '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
 };
 
 export const MODES = [
@@ -88,10 +90,11 @@ export const MODES = [
   },
   {
     id: 'mental',
-    label: 'Mental Health',
+    label: 'Mind',
     tabs: [
       { id: 'checkin',  label: 'Check-in', icon: ICON.checkin,  render: renderCheckin },
       { id: 'tasks',    label: 'Tasks',    icon: ICON.tasks,    render: renderTasks },
+      { id: 'texts',    label: 'Texts',    icon: ICON.reader,   render: renderTexts },
       { id: 'journal',  label: 'Journal',  icon: ICON.journal,  render: renderJournal },
       { id: 'stats',    label: 'Stats',    icon: ICON.bars,     render: renderMentalStats },
     ],
