@@ -4,6 +4,7 @@ import { openModal, closeModal } from '../../ui/modal.js';
 import { showToast } from '../../ui/toast.js';
 import { switchTab } from '../../navigation.js';
 import { esc, parseTopics } from '../util.js';
+import { safeColor } from '../../ui/dom.js';
 import {
   getTests, findTest, addTest, updateTest, deleteTest, setTestStatus,
   decorateTest, getSubjects, subjectName, subjectColor, sessionsForTest,
@@ -45,7 +46,7 @@ export function renderSchoolTests() {
       const when = du == null ? 'no date' : du < 0 ? 'past' : du === 0 ? 'today' : `in ${du}d`;
       const weak = t.weakTopics && t.weakTopics.length ? `<div class="school-test-weak">Weak: ${esc(t.weakTopics.slice(0, 4).join(', '))}</div>` : '';
       return `
-        <button class="school-test-card" data-edit="${t.id}" style="--subject-color:${subjectColor(t.subjectId)}">
+        <button class="school-test-card" data-edit="${t.id}" style="--subject-color:${safeColor(subjectColor(t.subjectId))}">
           <div class="school-test-card-top">
             <div class="school-test-card-title">${esc(t.title)}</div>
             <span class="school-pill risk-${t._risk}">${RISK_LABEL[t._risk]}</span>

@@ -15,7 +15,8 @@ import { initSwipe } from './navigation.js';
 import { initModes } from './modes/controller.js';
 import { setOnline, startRetryInterval } from './sync.js';
 import { loadHiddenBuiltins } from './tabs/settings.js';
-import { initPin, isConfigValid } from './auth.js';
+import { initAuth, isConfigValid } from './auth.js';
+import { escapeHtml } from './ui/dom.js';
 
 // Last-resort visible error so a fatal startup failure never leaves a blank
 // black screen. Uses inline styles so it works even if CSS failed to load.
@@ -30,14 +31,16 @@ function showFatal(err) {
   }
   box.innerHTML = `<h2 style="color:#f87171;margin-bottom:8px;">Something went wrong starting the app</h2>
     <p style="color:#8888a0;margin-bottom:12px;">This is usually a stale cache — try a hard refresh (Ctrl/Cmd+Shift+R) or an incognito window.</p>
-    <pre style="color:#fbbf24;white-space:pre-wrap;font-size:12px;">${String((err && err.stack) || err).replace(/</g, '&lt;')}</pre>`;
+    <pre style="color:#fbbf24;white-space:pre-wrap;font-size:12px;">${escapeHtml(String((err && err.stack) || err))}</pre>`;
 }
 
 async function startApp() {
  try {
   document.getElementById('app').classList.remove('hidden');
 
-  // Load everything in parallel before rendering.
+  // Load everything in parallel before rendering. Every call below is
+  // owner-scoped and requires the authenticated session established by the
+  // gate; none of them can run anonymously.
   const rangeEnd   = formatDate(today());
   const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
 
@@ -97,11 +100,9 @@ async function main() {
       return;
     }
 
-    if (sessionStorage.getItem('auth') === '1') {
-      startApp();
-    } else {
-      initPin(startApp);
-    }
+    // The gate restores or establishes a real Supabase session first; startApp
+    // only ever runs behind an authenticated owner.
+    await initAuth(startApp);
   } catch (err) {
     showFatal(err);
   }

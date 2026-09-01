@@ -14,6 +14,7 @@ import { addTask, toggleTask, deleteTask } from '../mental/store.js';
 import { sessionCardHtml, bindSchoolActions } from '../school/tabs/_shared.js';
 import { goTo } from '../modes/go.js';
 import { openQuickLog } from './quicklog.js';
+import { safeColor } from '../ui/dom.js';
 import {
   habitSummary, taskSummary, stimSummary, splitToday, schoolToday, checkinToday, whatMatters,
   currentBlockLabel,
@@ -98,9 +99,9 @@ export function renderHomeToday() {
       const done = !!h.logs[habit.id];
       const color = habit.color || CATEGORY_COLORS[habit.category] || 'var(--accent)';
       return `
-        <div class="habit-card ${done ? 'completed' : ''}" data-home-habit="${habit.id}">
+        <div class="habit-card ${done ? 'completed' : ''}" data-home-habit="${esc(habit.id)}">
           <div class="habit-card-left">
-            <div class="cat-dot" style="background:${color}"></div>
+            <div class="cat-dot" style="background:${safeColor(color)}"></div>
             <div class="habit-info">
               <div class="habit-name">${esc(habit.name)}</div>
               <div class="habit-category">${esc(CATEGORY_LABELS[habit.category] || habit.category)}${habit.label ? ' · ' + esc(habit.label) : ''}</div>

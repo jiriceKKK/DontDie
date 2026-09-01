@@ -7,6 +7,7 @@ import {
 } from '../db.js';
 import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
+import { safeColor } from '../ui/dom.js';
 import { switchTab } from '../navigation.js';
 import { renderTodayHabits, renderToday } from './today.js';
 import { scheduleOf, findEffectiveHabit } from '../habits.js';
@@ -226,7 +227,7 @@ export function renderCustomHabitRow(h) {
   const tagsHtml = tags.length ? `<span class="habit-edit-tags">${tags.map(t => `<span class="habit-tag-chip">${esc(t)}</span>`).join('')}</span>` : '';
   return `
     <div class="habit-edit-row">
-      <div class="cat-dot" style="background:${h.color || 'var(--accent)'}"></div>
+      <div class="cat-dot" style="background:${safeColor(h.color)}"></div>
       <div class="habit-edit-main">
         <div class="habit-edit-name">${esc(h.name)}</div>
         <div class="habit-edit-sub">${esc(CATEGORY_LABELS[eff.category] || 'Custom')} · ${esc(scheduleSummary(scheduleOf(eff)))}</div>

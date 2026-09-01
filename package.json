@@ -1,0 +1,27 @@
+{
+  "name": "dontdie",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DontDie \u2014 buildless personal operating system (static ES modules + Supabase).",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "serve": "node scripts/dev-server.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "lint": "eslint . --max-warnings 21",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "validate": "npm run check:syntax && npm run lint && npm run secretscan && npm run test:unit && npm run test:e2e",
+    "secretscan": "node scripts/secret-scan.mjs",
+    "db:verify": "node scripts/db-verify.mjs",
+    "notify:phase": "node scripts/notify-phase.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "1.56.1",
+    "eslint": "9.39.1",
+    "globals": "16.5.0"
+  }
+}

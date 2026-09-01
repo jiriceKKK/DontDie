@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "checkJs": false,
+    "allowJs": true,
+    "strict": false,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["js/**/*.js", "scripts/**/*.mjs", "tests/**/*.js", "tests/**/*.mjs"],
+  "exclude": ["node_modules", "test-results", "playwright-report"]
+}

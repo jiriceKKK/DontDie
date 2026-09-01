@@ -3,6 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!-- Content Security Policy.
+       Delivered as a meta tag because the app is hosted as static files on
+       GitHub Pages, which cannot set response headers. Where the host CAN set
+       headers (Netlify/Cloudflare/nginx), serve the same policy plus
+       frame-ancestors and Referrer-Policy as real headers instead — meta
+       ignores frame-ancestors. See docs/security-deployment.md.
+
+       script-src is 'self' only: the bootstrap moved to js/boot.js and the
+       Supabase library is vendored under vendor/, so no inline script and no
+       third-party script host is allowed. Inline STYLE ATTRIBUTES are still
+       needed by the existing renderers, so style-src-attr keeps 'unsafe-inline'
+       while style elements stay restricted. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; style-src-elem 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xpcehodzmbalflkigcaj.supabase.co wss://xpcehodzmbalflkigcaj.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
@@ -11,43 +27,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20">
-  <!-- Self-healing bootstrap: an ES-module graph fails to LINK before any of our
-       code runs (e.g. a freshly-deployed module importing a symbol from a still-
-       cached older module), which aborts the whole graph and leaves a blank
-       background. This inline classic script catches that specific failure and,
-       exactly once per session, clears the caches + service worker and reloads
-       so the browser refetches a self-consistent set. It never hides a genuine
-       bug: the guard only clears after the app actually boots, so a real error
-       still surfaces in the console and cannot loop. -->
-  <script>
-  (function () {
-    var KEY = 'dd_module_reload';
-    function booted() {
-      return ['app', 'pin-screen', 'setup-screen'].some(function (id) {
-        var el = document.getElementById(id);
-        return el && !el.classList.contains('hidden');
-      });
-    }
-    window.addEventListener('error', function (e) {
-      var msg = (e && (e.message || (e.error && e.error.message))) || '';
-      var moduleFail = /does not provide an export|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unexpected token '?<'?/i.test(msg);
-      if (!moduleFail) return;
-      if (sessionStorage.getItem(KEY)) return;          // already retried this session — don't loop
-      try { sessionStorage.setItem(KEY, '1'); } catch (_) {}
-      var reload = function () { location.reload(); };
-      var jobs = [];
-      try { if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })); } catch (_) {}
-      try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })); } catch (_) {}
-      (jobs.length ? Promise.all(jobs) : Promise.resolve()).then(reload, reload);
-    }, true);
-    // Only release the guard once the app genuinely came up, so a future desync
-    // can self-heal again but a real, persistent failure can never reload-loop.
-    window.addEventListener('load', function () {
-      setTimeout(function () { if (booted()) { try { sessionStorage.removeItem(KEY); } catch (_) {} } }, 3000);
-    });
-  })();
-  </script>
+  <link rel="stylesheet" href="style.css?v=21">
+  <!-- Self-healing bootstrap + service-worker registration. External and
+       same-origin so the page carries no inline script. -->
+  <script src="js/boot.js?v=21"></script>
 </head>
 <body>
 
@@ -66,39 +49,54 @@
     </div>
   </div>
 
-  <!-- PIN Lock Screen -->
-  <div id="pin-screen" class="pin-screen hidden">
-    <div class="pin-container">
+  <!-- Auth gate — real Supabase sign-in, plus an optional on-device privacy
+       lock. The lock is a UI convenience only: cloud data is authorized by the
+       Supabase session and Row Level Security, never by anything entered here. -->
+  <div id="auth-screen" class="pin-screen hidden">
+    <div class="pin-container auth-card" id="auth-card">
       <div class="pin-logo">DontDie</div>
-      <div class="pin-subtitle">Health</div>
-      <div class="pin-display" id="pin-display">
-        <div class="pin-dots">
-          <div class="pin-dot" id="dot-0"></div>
-          <div class="pin-dot" id="dot-1"></div>
-          <div class="pin-dot" id="dot-2"></div>
-          <div class="pin-dot" id="dot-3"></div>
-        </div>
-      </div>
-      <div class="pin-keypad" id="pin-keypad">
-        <button class="pin-key" data-key="1">1</button>
-        <button class="pin-key" data-key="2">2</button>
-        <button class="pin-key" data-key="3">3</button>
-        <button class="pin-key" data-key="4">4</button>
-        <button class="pin-key" data-key="5">5</button>
-        <button class="pin-key" data-key="6">6</button>
-        <button class="pin-key" data-key="7">7</button>
-        <button class="pin-key" data-key="8">8</button>
-        <button class="pin-key" data-key="9">9</button>
-        <button class="pin-key pin-key--empty" disabled></button>
-        <button class="pin-key" data-key="0">0</button>
-        <button class="pin-key pin-key--back" id="pin-back" aria-label="Backspace">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
-            <line x1="18" y1="9" x2="12" y2="15"/>
-            <line x1="12" y1="9" x2="18" y2="15"/>
-          </svg>
-        </button>
-      </div>
+      <div class="pin-subtitle" id="auth-subtitle">Sign in</div>
+
+      <!-- account sign-in -->
+      <form id="auth-form" class="auth-form" novalidate>
+        <label class="auth-label" for="auth-email">Email</label>
+        <input class="auth-input" id="auth-email" name="email" type="email"
+               autocomplete="username" autocapitalize="none" spellcheck="false" required>
+
+        <label class="auth-label" for="auth-password">Password</label>
+        <input class="auth-input" id="auth-password" name="password" type="password"
+               autocomplete="current-password" required>
+
+        <button class="auth-submit" id="auth-submit" type="submit">Sign in</button>
+        <p class="auth-note">Your account secures the cloud data. Nothing is stored in this page.</p>
+      </form>
+
+      <!-- device privacy lock -->
+      <form id="lock-form" class="auth-form hidden" novalidate>
+        <label class="auth-label" for="lock-secret">Device passcode</label>
+        <input class="auth-input" id="lock-secret" name="devicePasscode" type="password"
+               autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button class="auth-submit" id="lock-submit" type="submit">Unlock</button>
+        <button class="auth-link" id="lock-signout" type="button">Sign out of this account</button>
+      </form>
+
+      <!-- optional first-time device lock setup -->
+      <form id="lock-setup-form" class="auth-form hidden" novalidate>
+        <label class="auth-label" for="lock-setup-secret">Choose a device passcode</label>
+        <input class="auth-input" id="lock-setup-secret" name="newDevicePasscode" type="password"
+               autocomplete="new-password" autocapitalize="none" spellcheck="false">
+
+        <label class="auth-label" for="lock-setup-confirm">Confirm</label>
+        <input class="auth-input" id="lock-setup-confirm" name="confirmDevicePasscode" type="password"
+               autocomplete="new-password" autocapitalize="none" spellcheck="false">
+
+        <button class="auth-submit" id="lock-setup-submit" type="submit">Set passcode</button>
+        <button class="auth-link" id="lock-setup-skip" type="button">Not now</button>
+        <p class="auth-note">At least 6 digits, or a passphrase. Privacy convenience only — it does not protect the cloud account.</p>
+      </form>
+
+      <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+      <p class="auth-error hidden" id="auth-error" role="alert"></p>
     </div>
   </div>
 
@@ -145,20 +143,11 @@
   <!-- Confetti container -->
   <div id="confetti-container" class="confetti-container"></div>
 
-  <!-- Supabase sets window.supabase — must remain a classic script, not a module -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase sets window.supabase — must remain a classic script, not a module.
+       Vendored at an exact version from our own origin (see vendor/README.md)
+       so script-src can stay 'self'. -->
+  <script src="vendor/supabase-js-2.112.4.umd.js?v=21"></script>
   <!-- ES-module entry point — imports everything else under js/ -->
-  <script type="module" src="js/main.js?v=20"></script>
-
-  <!-- Network-first service worker: a new deploy shows up on the next reload
-       (fixes the stale ES-module cache). updateViaCache:'none' makes the browser
-       always fetch sw.js fresh so the worker itself can't get stuck. -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
-      });
-    }
-  </script>
+  <script type="module" src="js/main.js?v=21"></script>
 </body>
 </html>

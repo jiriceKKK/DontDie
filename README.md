@@ -270,7 +270,7 @@ Date-based logs (habit logs, check-ins, tasks, journal, stimulation blocks,
 school sessions/results) are filtered to the selected range; configuration
 (custom habits, split, activity library, subjects/tests, settings) is always
 included in full. The export is **behaviour data only** — it never contains the
-Supabase URL/key, PIN hash, or any auth/session internals — and explicitly
+Supabase URL/key or any auth/session internals — and explicitly
 states it is not medical/diagnostic. Files download via Blob (with an
 open-in-new-tab fallback for older iOS). Code lives in `js/export/`.
 
@@ -290,105 +290,41 @@ git clone https://github.com/YOUR_USERNAME/DontDie
 
 Go to [supabase.com](https://supabase.com), create a new project.
 
-### 3 — Run the SQL schema
+### 3 — Create the schema
 
-In your Supabase dashboard → **SQL Editor**, paste and run:
+The schema is **versioned SQL in this repository**, not a snippet to paste from
+a README. Apply it with the migration file so the deployed database and the code
+always match:
 
-```sql
-CREATE TABLE habit_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  date DATE NOT NULL,
-  habit_id TEXT NOT NULL,
-  completed BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(date, habit_id)
-);
-
-CREATE TABLE custom_habits (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  name TEXT NOT NULL,
-  days INTEGER[] NOT NULL,
-  color TEXT DEFAULT '#6ee7b7',
-  active BOOLEAN DEFAULT true,
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Editable training split (single JSON document)
-CREATE TABLE split_config (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT split_config_singleton CHECK (id = 1)
-);
-
--- Mental Health data: check-ins, tasks, journal (single JSON document)
-CREATE TABLE mh_store (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT mh_store_singleton CHECK (id = 1)
-);
-
--- Stimulation data: activity library + per-day block logs (single JSON document)
-CREATE TABLE stimulation_store (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT stimulation_store_singleton CHECK (id = 1)
-);
-
--- School study-planner data: subjects, tests, sessions, results (single JSON document)
-CREATE TABLE school_store (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT school_store_singleton CHECK (id = 1)
-);
-
--- Built-in habit overrides + custom-habit meta (tags, schedule, category).
-CREATE TABLE habit_config (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT habit_config_singleton CHECK (id = 1)
-);
-
--- OPTIONAL: Mind · Texts reading library (single JSON document).
--- If you skip this table, Texts still works fully from localStorage.
-CREATE TABLE mind_texts_store (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  data JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  CONSTRAINT mind_texts_store_singleton CHECK (id = 1)
-);
-
-ALTER TABLE habit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE custom_habits ENABLE ROW LEVEL SECURITY;
-ALTER TABLE split_config ENABLE ROW LEVEL SECURITY;
-ALTER TABLE mh_store ENABLE ROW LEVEL SECURITY;
-ALTER TABLE stimulation_store ENABLE ROW LEVEL SECURITY;
-ALTER TABLE school_store ENABLE ROW LEVEL SECURITY;
-ALTER TABLE habit_config ENABLE ROW LEVEL SECURITY;
-ALTER TABLE mind_texts_store ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow all anon" ON habit_logs FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON custom_habits FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON split_config FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON mh_store FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON stimulation_store FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON school_store FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON habit_config FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all anon" ON mind_texts_store FOR ALL TO anon USING (true) WITH CHECK (true);
+```
+supabase/migrations/001_owner_auth_and_rls.sql   the schema + owner-scoped RLS
+supabase/verify/001_owner_auth_and_rls.sql       proof the boundary holds
+supabase/staging/*.sql                           staging fixtures (never production)
 ```
 
-> The `split_config`, `mh_store`, `stimulation_store`, `school_store` and
-> `habit_config` tables are optional. Without them those features still work
-> fully from `localStorage` — they just won't sync across devices until the
-> tables exist. Built-in habit edits, custom-habit tags and every-N-day
-> schedules live in `habit_config`; the habit IDs never change, so your existing
-> `habit_logs` always keep mapping to the right habit.
+Steps, in order — the full procedure, including the backup and the staging
+rehearsal, is in [`docs/security-deployment.md`](docs/security-deployment.md):
+
+1. Create the owner account: Dashboard → Authentication → Users → Add user.
+   Copy its UUID.
+2. Take a database-level backup (Dashboard → Database → Backups, or `pg_dump`).
+3. Rehearse against a disposable Postgres: `npm run db:verify`.
+4. Replace `OWNER_UUID_PLACEHOLDER` in the migration with the owner UUID and run
+   the file. It is transactional: any failure rolls everything back.
+5. Run the verification file and confirm every check passes.
+
+> **Do not** create these tables with `USING (true)` / `WITH CHECK (true)`
+> policies for the `anon` role. Earlier versions of this README documented
+> exactly that, which let anyone holding the (public) project URL and anon key
+> read and modify every row. The migration above removes those policies and
+> replaces them with `auth.uid() = user_id` for the `authenticated` role only.
+
+The `split_config`, `mh_store`, `stimulation_store`, `school_store`,
+`habit_config` and `mind_texts_store` tables are optional. Without them those
+features still work fully from `localStorage` — they just will not sync across
+devices. The migration handles a missing optional table explicitly instead of
+failing halfway. Habit IDs never change, so existing `habit_logs` always keep
+mapping to the right habit.
 
 ### 4 — Fill in `js/config.js`
 
@@ -399,7 +335,11 @@ Open `js/config.js` and replace the placeholder values:
 | `SUPABASE_URL` | Supabase Dashboard → Settings → API → Project URL |
 | `SUPABASE_ANON_KEY` | Supabase Dashboard → Settings → API → anon public |
 
-The `PIN_HASH` is already set to the hash of `3510`.
+Both values are **public** — every browser that loads the app can read them.
+They are not credentials. Authorization is enforced server-side by the Row Level
+Security policies in the migration, keyed on the signed-in owner. Never put a
+service-role key, a password, or any webhook URL in `js/config.js` or anywhere
+else under `js/`.
 
 ### 5 — Enable GitHub Pages
 
@@ -409,20 +349,30 @@ Your app will be live at `https://YOUR_USERNAME.github.io/DontDie/`.
 
 ---
 
-## Changing the PIN
+## Signing in, and the device lock
 
-The PIN is never stored in plain text. Only a SHA-256 hash lives in `js/config.js`.
+The app authenticates with **Supabase Auth** (owner email + password). The
+session is persisted and refreshed automatically, so returning to the app does
+not mean signing in again. Every database call runs under that session and is
+scoped to the owner by RLS.
 
-To compute the hash of a new PIN, run this in your browser console:
+Optionally, a **device passcode** can be set on first sign-in. It is a privacy
+convenience — it stops someone holding the unlocked phone from reading your
+journal — and it is explicitly *not* account security:
 
-```javascript
-const pin = "YOUR_NEW_PIN";
-const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
-const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-console.log(hex); // paste this into js/config.js as PIN_HASH
-```
+- it is per device, set by you, and can be skipped;
+- only a salted PBKDF2-SHA-256 verifier is stored locally, never the passcode;
+- it requires at least six digits or a passphrase, and throttles failed attempts;
+- **it never authorizes a database request.** Cloud data is decided by the
+  Supabase session and RLS alone.
 
-Replace `PIN_HASH` in `js/config.js` with the output.
+Sign out from the lock screen to clear the session and the unlock state.
+
+> Versions before the security baseline used a four-digit PIN whose SHA-256 hash
+> — and the PIN itself, in a comment — shipped in `js/config.js`. That was
+> readable in downloaded source, trivially brute-forced offline, and it never
+> protected Supabase. It has been removed. Treat the old PIN as public and do
+> not reuse it.
 
 ---
 
@@ -453,18 +403,23 @@ Mobility runs every day. OAH is skipped Wednesday (CNS rest).
 ## File structure
 
 ```
-index.html          — app shell, PIN screen, navigation skeleton
+index.html          — app shell, auth gate, navigation skeleton (CSP, no inline script)
 style.css           — all styles and animations
 js/
   main.js           — entry point: load data, then hand off to the mode controller
-  config.js         — Supabase credentials + PIN hash  ← edit this file
+  config.js         — public Supabase URL + anon key  ← edit this file
   db.js             — Supabase client and all database functions
   constants.js      — BUILT_IN_HABITS, category maps, day/month names
   state.js          — shared mutable app state (incl. active mode + mental data)
   habits.js         — habit queries, streak/stats computation
   navigation.js     — switchTab(), initSwipe() — mode-agnostic, reads state.modeTabs
   sync.js           — offline queue, flushQueue(), setOnline()
-  auth.js           — PIN hashing, initPin(), isConfigValid()
+  auth.js           — the gate: Supabase session, sign in/out, device lock
+  session.js        — authenticated session state (owner id, expiry)
+  supabaseClient.js — the single shared Supabase client
+  deviceLock.js     — optional on-device passcode (PBKDF2, throttled)
+  boot.js           — self-healing bootstrap + service-worker registration
+  ui/dom.js         — escapeHtml / safeColor / safeId output-safety helpers
   modes/
     registry.js     — the mode list + their tabs (add a new mode here)
     controller.js   — setMode(), builds nav + panels, mode switcher menu
@@ -566,6 +521,20 @@ When Supabase is unreachable, a banner appears at the top. Habit toggles still w
 
 ## Security note
 
-The PIN hash in `js/config.js` is visible in the public repo. This is fine — SHA-256 of a 4-digit PIN cannot be reversed in practice without brute-forcing all 10,000 combinations, and the data itself (habit logs) is not sensitive. The PIN just prevents casual access.
+The Supabase project URL and anon key in `js/config.js` are published values, and
+that is by design — they identify the project, they are not credentials. The
+actual boundary is **Row Level Security**: every personal table carries a
+`user_id`, and every policy grants access only when `auth.uid() = user_id`. The
+`anon` role holds no table privileges at all. Somebody with the URL and the anon
+key, but no owner session, can read nothing and write nothing.
 
-If you want stronger security, move the repo to private or use Supabase Row Level Security with a proper auth flow.
+The local device lock is a privacy convenience, not authorization — see
+"Signing in, and the device lock" above.
+
+Never commit a service-role key, an owner password, a database connection
+string, or the Discord webhook. `.env` is git-ignored; `.env.example` carries
+variable names only. Run `npm run secretscan` before committing.
+
+Full detail — the boundary, the CSP, migration and rollback procedure, key
+rotation, and incident response — is in
+[`docs/security-deployment.md`](docs/security-deployment.md).

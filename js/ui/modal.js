@@ -1,3 +1,5 @@
+import { escapeHtml } from './dom.js';
+
 // _closing tracks an in-flight exit animation so overlay-click + close-button
 // can't stack. _gen is bumped on every open so a close that is superseded by a
 // new open (e.g. past-day picker → day-log modal) never hides the new modal.
@@ -17,7 +19,7 @@ export function openModal(html, title = '') {
 
   content.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title">${title}</span>
+      <span class="modal-title">${escapeHtml(title)}</span>
       <button class="modal-close" id="modal-close-btn" aria-label="Close">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>

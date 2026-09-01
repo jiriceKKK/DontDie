@@ -8,6 +8,7 @@ import {
   getAllActiveHabits, isScheduledOn, scheduleOf,
 } from '../habits.js';
 import { openModal } from '../ui/modal.js';
+import { escapeHtml, safeColor } from '../ui/dom.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DOW2 = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -206,14 +207,14 @@ function renderStatsActivity(container) {
       else if (d <= -8) trend = '<span class="activity-trend down">▼</span>';
     }
     return `
-      <div class="activity-habit-row" data-habit="${habit.id}">
-        <div class="cat-dot" style="background:${color}"></div>
+      <div class="activity-habit-row" data-habit="${escapeHtml(habit.id)}">
+        <div class="cat-dot" style="background:${safeColor(color)}"></div>
         <div class="activity-habit-body">
           <div class="activity-habit-top">
             <span class="activity-habit-name">${esc(habit.name)}</span>
             <span class="activity-habit-rate">${rate !== null ? rate + '%' : '—'} ${trend}</span>
           </div>
-          <div class="stat-bar"><div class="stat-bar-fill" style="width:${rate || 0}%;background:${color}"></div></div>
+          <div class="stat-bar"><div class="stat-bar-fill" style="width:${rate || 0}%;background:${safeColor(color)}"></div></div>
           <div class="activity-habit-meta"><span>${esc(schedText(habit))}</span>${chip}</div>
         </div>
         <svg class="activity-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
@@ -247,8 +248,8 @@ function openActivityDetail(habit) {
 
   const html = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-      <div class="cat-dot" style="background:${color};width:12px;height:12px;"></div>
-      <div style="font-size:16px;font-weight:600;">${habit.name}</div>
+      <div class="cat-dot" style="background:${safeColor(color)};width:12px;height:12px;"></div>
+      <div style="font-size:16px;font-weight:600;">${esc(habit.name)}</div>
     </div>
     <div class="activity-detail">
       <div class="activity-detail-stat">
@@ -282,7 +283,7 @@ function renderStatsInsights(container) {
   const html = insights.map(text => `
     <div class="insight-item">
       <div class="insight-bullet"></div>
-      <div>${text}</div>
+      <div>${esc(text)}</div>
     </div>
   `).join('');
   container.innerHTML = `<div class="insights-list">${html}</div>`;

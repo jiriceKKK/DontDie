@@ -5,6 +5,7 @@
 
 import { openModal, closeModal } from '../../ui/modal.js';
 import { showToast } from '../../ui/toast.js';
+import { safeColor } from '../../ui/dom.js';
 import { formatDate, today } from '../../utils/date.js';
 import { esc, copyToClipboard } from '../util.js';
 import { sessionType, isScored } from '../sessionTypes.js';
@@ -69,7 +70,7 @@ export function sessionCardHtml(session, { showDate = false, collapsible = true 
 
   if (!collapsible) {
     return `
-    <div class="school-session-card ${cls}" style="--subject-color:${color}">
+    <div class="school-session-card ${cls}" style="--subject-color:${safeColor(color)}">
       <div class="school-card-top"><div class="school-card-headline">${headline}</div><span class="school-min">${session.minutes}m</span></div>
       <div class="school-card-meta">${metaPills}</div>
       ${detail}
@@ -77,7 +78,7 @@ export function sessionCardHtml(session, { showDate = false, collapsible = true 
   }
 
   return `
-    <div class="school-session-card school-collapsible ${cls}" style="--subject-color:${color}">
+    <div class="school-session-card school-collapsible ${cls}" style="--subject-color:${safeColor(color)}">
       <button type="button" class="school-card-summary" data-school-toggle="${session.id}" aria-expanded="false">
         <span class="school-card-sumtext">
           <span class="school-card-headline">${headline}</span>

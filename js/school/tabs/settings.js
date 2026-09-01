@@ -1,6 +1,7 @@
 import { openModal, closeModal } from '../../ui/modal.js';
 import { showToast } from '../../ui/toast.js';
 import { esc } from '../util.js';
+import { safeColor } from '../../ui/dom.js';
 import {
   getSettings, updateSettings, resetSchool,
   getSubjects, findSubject, addSubject, updateSubject, deleteSubject,
@@ -39,7 +40,7 @@ export function renderSchoolSettings() {
     ${subjects.length ? `<div class="school-subj-list">
       ${subjects.map(su => `
         <button class="school-subj-row ${su.archived ? 'archived' : ''}" data-subj="${su.id}">
-          <span class="school-subj-dot" style="background:${su.color}"></span>
+          <span class="school-subj-dot" style="background:${safeColor(su.color)}"></span>
           <span class="school-subj-name">${esc(su.name)}${su.archived ? ' · archived' : ''}</span>
           <span class="school-subj-meta">diff ${su.defaultDifficulty}/5</span>
         </button>`).join('')}

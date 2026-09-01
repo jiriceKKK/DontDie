@@ -9,6 +9,7 @@ import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
 import { launchConfetti } from '../ui/confetti.js';
 import { updateProgressRing } from '../ui/progress.js';
+import { escapeHtml, safeColor, safeId } from '../ui/dom.js';
 
 // toggleHabit lives here (not in habits.js) because it calls renderTodayHabits,
 // which would create a circular import if it were in a shared module.
@@ -45,7 +46,6 @@ export async function toggleHabit(dateStr, habitId, currentState) {
 
 export function renderToday(date) {
   const panel   = document.getElementById('tab-today');
-  const dateStr = formatDate(date);
   const isToday = isSameDay(date, today());
   const dayName = DAY_FULL[date.getDay()];
   const monthDay = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
@@ -117,17 +117,20 @@ export function renderTodayHabits(date) {
   let html = `<div class="habit-list">`;
   for (const habit of sorted) {
     const done  = !!logs[habit.id];
-    const color = habit.color || CATEGORY_COLORS[habit.category] || 'var(--accent)';
+    // Every value below is storage-backed (custom habits sync from Supabase /
+    // localStorage), so it is escaped or normalised before interpolation.
+    const color = safeColor(habit.color || CATEGORY_COLORS[habit.category], 'var(--accent)');
+    const id    = safeId(habit.id);
     html += `
-      <div class="habit-card ${done ? 'completed' : ''}" data-habit="${habit.id}" data-date="${dateStr}">
+      <div class="habit-card ${done ? 'completed' : ''}" data-habit="${escapeHtml(habit.id)}" data-date="${escapeHtml(dateStr)}">
         <div class="habit-card-left">
           <div class="cat-dot" style="background:${color}"></div>
           <div class="habit-info">
-            <div class="habit-name">${habit.name}</div>
-            <div class="habit-category">${CATEGORY_LABELS[habit.category] || habit.category}${habit.label ? ' · ' + habit.label : ''}</div>
+            <div class="habit-name">${escapeHtml(habit.name)}</div>
+            <div class="habit-category">${escapeHtml(CATEGORY_LABELS[habit.category] || habit.category)}${habit.label ? ' · ' + escapeHtml(habit.label) : ''}</div>
           </div>
         </div>
-        <div class="habit-check" id="check-${habit.id}">
+        <div class="habit-check" id="check-${id}">
           <svg class="habit-check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
@@ -179,8 +182,8 @@ export function openLogPastDayModal() {
     const done   = habits.filter(h => logs[h.id]).length;
     const dStr   = formatDate(d);
     html += `
-      <button class="past-day-btn" data-date="${dStr}">
-        <span>${friendlyDay(d)}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}</span>
+      <button class="past-day-btn" data-date="${escapeHtml(dStr)}">
+        <span>${escapeHtml(friendlyDay(d))}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}</span>
         <span class="past-day-date">${habits.length > 0 ? `${done}/${habits.length}` : 'No habits'}</span>
       </button>
     `;
@@ -210,17 +213,18 @@ export function openDayLogModal(date) {
 
   const renderHabitRows = () => habits.map(habit => {
     const done  = isCompleted(dateStr, habit.id);
-    const color = habit.color || CATEGORY_COLORS[habit.category] || 'var(--accent)';
+    const color = safeColor(habit.color || CATEGORY_COLORS[habit.category], 'var(--accent)');
+    const id    = safeId(habit.id);
     return `
-      <div class="habit-card ${done ? 'completed' : ''}" data-habit="${habit.id}" data-date="${dateStr}" style="margin-bottom:8px;">
+      <div class="habit-card ${done ? 'completed' : ''}" data-habit="${escapeHtml(habit.id)}" data-date="${escapeHtml(dateStr)}" style="margin-bottom:8px;">
         <div class="habit-card-left">
           <div class="cat-dot" style="background:${color}"></div>
           <div class="habit-info">
-            <div class="habit-name">${habit.name}</div>
-            <div class="habit-category">${CATEGORY_LABELS[habit.category] || habit.category}</div>
+            <div class="habit-name">${escapeHtml(habit.name)}</div>
+            <div class="habit-category">${escapeHtml(CATEGORY_LABELS[habit.category] || habit.category)}</div>
           </div>
         </div>
-        <div class="habit-check" id="modal-check-${habit.id}">
+        <div class="habit-check" id="modal-check-${id}">
           <svg class="habit-check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>

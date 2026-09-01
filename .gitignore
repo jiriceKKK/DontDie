@@ -1,0 +1,30 @@
+# ── secrets / local environment ─────────────────────────────
+# Never commit real secrets. Only .env.example (variable names, no values)
+# is tracked. DONTDIE_DISCORD_WEBHOOK_URL and any Supabase admin credential
+# must come from the shell, a secret manager, or protected CI — never a file
+# in this repository.
+.env
+.env.*
+!.env.example
+
+# ── dependencies / tooling output ───────────────────────────
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+*.log
+npm-debug.log*
+
+# ── local scratch / exports (may contain personal data) ─────
+tmp/
+scratch/
+*.local.json
+dontdie-backup*.json
+dontdie-export*.md
+supabase/.temp/
+supabase/backups/
+
+# ── OS noise ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

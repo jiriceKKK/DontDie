@@ -8,7 +8,7 @@
 // Bump CACHE on each deploy that should hard-invalidate old cached assets.
 // ============================================================
 
-const CACHE = 'dontdie-v20';
+const CACHE = 'dontdie-v21';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -25,6 +25,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;                       // never touch writes
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;        // let Supabase / CDN pass through
+
+  // Server-side tooling is never part of the app shell. Even though the
+  // browser never requests these paths, refuse to cache them so a Node script
+  // (e.g. the webhook notifier) can never end up in a client cache.
+  if (/^\/(?:scripts|supabase|tests|docs)\//.test(url.pathname) || url.pathname.endsWith('/.env')) return;
 
   event.respondWith((async () => {
     try {
