@@ -1,0 +1,35 @@
+{
+  // Core-only typecheck (Phase 2).
+  //
+  // The application stays buildless — nothing here emits anything. This config
+  // exists so the new data layer and the pure helpers it depends on are checked
+  // against their JSDoc types, and so later phases can widen `include` one file
+  // at a time instead of trying to boil the whole 70-file ocean at once.
+  //
+  // Rules of engagement: keep it green, and never buy silence with a broad
+  // `any` or an `@ts-ignore`. If a file cannot pass, it does not belong on the
+  // include list yet.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": [
+    "js/data/**/*.js",
+    "js/utils/**/*.js",
+    "js/ui/dom.js",
+    "js/ui/saveFeedback.js",
+    "js/session.js"
+  ],
+  "exclude": ["node_modules", "test-results", "playwright-report"]
+}

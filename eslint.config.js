@@ -111,6 +111,16 @@ export default [
     },
   },
 
+  // ---- data-layer unit tests ---------------------------------------------
+  // These run under Node but import 'fake-indexeddb/auto', which installs the
+  // IndexedDB globals on globalThis. Both global sets are therefore real here.
+  {
+    files: ['tests/unit/data/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
+
   // ---- E2E specs and browser fixtures ------------------------------------
   // Spec files are Node, but the bodies of page.evaluate() callbacks run in the
   // browser, so both global sets are legitimate here.

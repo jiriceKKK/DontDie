@@ -10,6 +10,9 @@ async function bootSignedIn(page, rows = OWNER_ROWS) {
   await installFakeSupabase(page, { scenario: 'signed-in', rows });
   await page.goto('/index.html');
   await expect(page.locator('#app')).toBeVisible();
+  // Since Phase 2 the shell is built after the local database has hydrated, so
+  // #app being visible no longer implies the panels exist yet.
+  await expect(page.locator('#tab-slider > *').first()).toBeAttached();
 }
 
 test.describe('rendering behind the auth gate', () => {

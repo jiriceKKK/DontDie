@@ -297,10 +297,18 @@ a README. Apply it with the migration file so the deployed database and the code
 always match:
 
 ```
-supabase/migrations/001_owner_auth_and_rls.sql   the schema + owner-scoped RLS
-supabase/verify/001_owner_auth_and_rls.sql       proof the boundary holds
-supabase/staging/*.sql                           staging fixtures (never production)
+supabase/migrations/001_owner_auth_and_rls.sql            the schema + owner-scoped RLS
+supabase/verify/001_owner_auth_and_rls.sql                proof the boundary holds
+supabase/migrations/002_revision_and_archive_support.sql  server-maintained revision/updated_at
+supabase/verify/002_revision_and_archive_support.sql      proof compare-and-set holds
+supabase/staging/*.sql                                    staging fixtures (never production)
 ```
+
+Apply them in order. `002` needs no owner UUID: it adds a `revision` column and
+a trigger that maintains `revision`/`updated_at` server-side, so a whole-document
+write can be a compare-and-set instead of a last-write-wins overwrite. It is
+additive and backward compatible — a client that knows nothing about revisions
+still writes successfully.
 
 Steps, in order — the full procedure, including the backup and the staging
 rehearsal, is in [`docs/security-deployment.md`](docs/security-deployment.md):
@@ -321,8 +329,9 @@ rehearsal, is in [`docs/security-deployment.md`](docs/security-deployment.md):
 
 The `split_config`, `mh_store`, `stimulation_store`, `school_store`,
 `habit_config` and `mind_texts_store` tables are optional. Without them those
-features still work fully from `localStorage` — they just will not sync across
-devices. The migration handles a missing optional table explicitly instead of
+features still work fully on the device — they just will not sync across
+devices. (The reference deployment has no `habit_config` table, and both
+migrations skip it explicitly rather than failing.) The migration handles a missing optional table explicitly instead of
 failing halfway. Habit IDs never change, so existing `habit_logs` always keep
 mapping to the right habit.
 
@@ -413,11 +422,22 @@ js/
   state.js          — shared mutable app state (incl. active mode + mental data)
   habits.js         — habit queries, streak/stats computation
   navigation.js     — switchTab(), initSwipe() — mode-agnostic, reads state.modeTabs
-  sync.js           — offline queue, flushQueue(), setOnline()
+  sync.js           — the shell's view of connectivity (offline banner + reconciler)
+  data/             — the local-first persistence layer (nothing else touches storage)
+    types.js            — JSDoc contracts for documents, logs, outbox, conflicts
+    indexedDb.js        — the dontdie_local_v2 database and its transactions
+    repository.js       — the facade module stores call
+    documentRepository.js — whole-document stores, local write + queued cloud write
+    habitRepository.js  — habit logs and custom habits, with tombstones
+    outbox.js           — durable queue, collapse rules, backoff
+    reconcile.js        — the only place a remote write happens; compare-and-set
+    conflicts.js        — both snapshots retained until the owner chooses
+    migrations.js       — localStorage to IndexedDB, non-destructively
   auth.js           — the gate: Supabase session, sign in/out, device lock
   session.js        — authenticated session state (owner id, expiry)
   supabaseClient.js — the single shared Supabase client
   deviceLock.js     — optional on-device passcode (PBKDF2, throttled)
+  ui/syncStatus.js  — the shell's sync chip and the conflict-recovery sheet
   boot.js           — self-healing bootstrap + service-worker registration
   ui/dom.js         — escapeHtml / safeColor / safeId output-safety helpers
   modes/
@@ -515,7 +535,30 @@ category with its own page) is a few small, local edits — no rewrite:
 
 ## Offline behavior
 
-When Supabase is unreachable, a banner appears at the top. Habit toggles still work — changes are queued in memory and retried every 30 seconds automatically. Data is not persisted offline if you close the tab before it syncs.
+The app is local-first. Everything you see is read from IndexedDB
+(`dontdie_local_v2`) before the cloud is contacted, so it renders immediately
+and a slow or missing connection never blocks it.
+
+Every change is written locally and queued in a **durable outbox** inside the
+same transaction. That is what makes "saved" honest: closing the tab, reloading,
+or losing the connection cannot lose a change, because the queue is on disk
+rather than in memory. It drains at startup, when the connection returns, and
+after each successful write, with bounded backoff in between.
+
+The shell carries one compact status: *saved on this device*, *syncing*,
+*offline — saved on this device*, *synced*, *sync failed — retrying*, or
+*needs your choice*. It is hidden entirely when everything is in sync.
+
+If the same document changed on two devices, neither copy is discarded. The
+status opens a recovery sheet offering **Keep this device**, **Use cloud**, and
+**Download both before deciding**. Habit logs are the one exception: they are
+independently keyed by date and habit, so they merge automatically, newest
+wins, and a delete is never resurrected by a later sync.
+
+Where the browser refuses to give us a database at all (private mode, a blocked
+upgrade), the app still runs from its legacy `localStorage` mirror and writes
+straight to the cloud — and if neither is available it says the change could
+not be saved instead of showing a success it cannot back up.
 
 ---
 

@@ -96,6 +96,11 @@ const steps = [
     OWNER_UUID_PLACEHOLDER: OWNER_UUID,
     OTHER_UUID_PLACEHOLDER: OTHER_UUID,
   })],
+  ['migration 002   ', materialise('supabase/migrations/002_revision_and_archive_support.sql')],
+  ['verification 002', materialise('supabase/verify/002_revision_and_archive_support.sql', {
+    OWNER_UUID_PLACEHOLDER: OWNER_UUID,
+    OTHER_UUID_PLACEHOLDER: OTHER_UUID,
+  })],
 ];
 
 let failed = false;

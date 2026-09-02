@@ -27,10 +27,30 @@ export default defineConfig({
     serviceWorkers: 'block',
   },
 
-  // The two viewports plan.md requires evidence at.
+  // The two viewports plan.md requires evidence at, plus a third project that
+  // exists purely so the gesture-performance measurements are not competing
+  // with the rest of the suite for CPU. It depends on both viewport projects,
+  // so it runs last and effectively alone, and it never runs in parallel with
+  // itself — a long-task budget measured against a saturated machine would be
+  // noise rather than evidence.
   projects: [
-    { name: 'mobile-390x844',   use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } } },
-    { name: 'desktop-1280x900', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } } },
+    {
+      name: 'mobile-390x844',
+      testIgnore: '**/swipe-performance.spec.js',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+    },
+    {
+      name: 'desktop-1280x900',
+      testIgnore: '**/swipe-performance.spec.js',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+    },
+    {
+      name: 'gesture-performance',
+      testMatch: '**/swipe-performance.spec.js',
+      fullyParallel: false,
+      dependencies: ['mobile-390x844', 'desktop-1280x900'],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+    },
   ],
 
   webServer: {

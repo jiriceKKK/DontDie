@@ -1,7 +1,7 @@
 // The authentication gate: the four states plan.md requires evidence for —
 // signed out, signed in, expired session, and offline with a cached session.
 import { test, expect } from '@playwright/test';
-import { installFakeSupabase, watchPage, OWNER, OWNER_ROWS, PASSWORD } from './fixtures/seed.js';
+import { installFakeSupabase, watchPage, settleSync, OWNER, OWNER_ROWS, PASSWORD } from './fixtures/seed.js';
 
 test.describe('auth gate', () => {
   test('signed out: the gate is shown and the app stays hidden', async ({ page }) => {
@@ -48,8 +48,12 @@ test.describe('auth gate', () => {
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeHidden();
 
+    // Since Phase 2 the shell renders from IndexedDB and reconciles with the
+    // cloud afterwards, so the first query may not have been issued yet when
+    // the app becomes visible. Wait for reconciliation before inspecting it.
+    await settleSync(page);
     const queries = await page.evaluate(() => window.__DONTDIE_QUERIES__);
-    expect(queries.length).toBeGreaterThan(0);
+    expect(queries.length, 'background reconciliation must still reach the cloud').toBeGreaterThan(0);
     for (const query of queries) {
       if (query.op === 'insert' || query.op === 'upsert') {
         // Writes carry the owner in the row itself.

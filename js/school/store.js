@@ -10,8 +10,8 @@
 // ============================================================
 
 import { state } from '../state.js';
-import { dbSaveSchoolStore } from '../db.js';
-import { showToast } from '../ui/toast.js';
+import { persistDocument } from '../data/repository.js';
+import { reportSaveResult } from '../ui/saveFeedback.js';
 import { formatDate, today, addDays, parseDate } from '../utils/date.js';
 import { generatePlan, suggestSession, READINESS_THRESHOLD } from './planner.js';
 import { isValidSessionType } from './sessionTypes.js';
@@ -19,7 +19,6 @@ import { buildPrompt } from './prompts.js';
 
 const LS_KEY = 'dontdie_school_v1';
 const VERSION = 1;
-let _cloudOk = true;
 
 function uid() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -105,31 +104,30 @@ function normalize(d) {
   return d;
 }
 
-export function initSchool(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stampMs(remote.updatedAt) >= stampMs(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || buildDefaultSchool();
-
-  chosen = normalize(chosen);
+export function initSchool(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || buildDefaultSchool());
   if (!chosen.updatedAt) chosen.updatedAt = nowIso();
   state.school = chosen;
   saveLocal(chosen);
+}
 
-  if (!remote || stampMs(chosen.updatedAt) > stampMs(remote.updatedAt)) {
-    dbSaveSchoolStore(chosen).catch(() => {});
-  }
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptSchool(data) {
+  state.school = normalize(data);
+  saveLocal(state.school);
 }
 
 export function saveSchool() {
   const d = state.school;
   d.updatedAt = nowIso();
   saveLocal(d);
-  dbSaveSchoolStore(d).then(({ error }) => {
-    if (error && _cloudOk) { _cloudOk = false; showToast('Saved on this device · cloud sync unavailable', 'warning'); }
-    else if (!error && !_cloudOk) { _cloudOk = true; showToast('Synced', 'success'); }
-  }).catch(() => {});
+  return persistDocument('school', d).then(result => {
+    reportSaveResult('School', result);
+    return result;
+  });
 }
+
+export { normalize as normalizeSchoolDocument };
 
 export function getSchool() { return state.school; }
 export function getSettings() { return state.school.settings; }

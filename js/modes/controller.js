@@ -22,12 +22,10 @@ function errorCard(label, err) {
 }
 
 export function initModes() {
-  // Mode switcher button (top-left) — tap opens the picker, hold goes Home.
-  const switcher = document.getElementById('mode-switcher');
-  if (switcher) wireSwitcher(switcher);
-  else console.error('[modes] #mode-switcher not found — mode switching disabled');
-
-  // Thumb-reachable floating switcher (bottom): same tap/hold behaviour.
+  // The redundant header mode pill (#mode-switcher) was removed in Phase 2.
+  // #mode-fab — the translucent control above the bottom dock — is now the
+  // single mode picker and Home shortcut. Nothing looks for the header pill,
+  // so its absence is not an error and leaves no dead listener behind.
   ensureModeFab();
 
   // Delegated tab clicks. The nav containers persist across mode rebuilds, so
@@ -47,7 +45,44 @@ export function initModes() {
     if (tab) switchTab(tab);
   });
 
+  // The reconciler adopted a newer cloud copy: redraw what is on screen.
+  document.addEventListener('app:store-adopted', () => {
+    if (state.activeTab) switchTab(state.activeTab, false);
+  });
+
   setMode(state.activeModeId || 'home');
+}
+
+/** Render one panel in isolation; a failing page shows a card, not a blank mode. */
+function renderPanel(mode, tab) {
+  if (!tab) return;
+  try {
+    tab.render();
+  } catch (err) {
+    console.error(`[modes] render failed for "${mode.id}/${tab.id}":`, err);
+    const panel = document.getElementById(`tab-${tab.id}`);
+    if (panel) panel.innerHTML = errorCard(tab.label, err);
+  }
+}
+
+// Build the remaining panels one animation frame apart, and abandon the work
+// if the mode changed underneath us.
+let _prerenderHandle = 0;
+function schedulePrerender(mode, skipTabId) {
+  if (_prerenderHandle) { cancelAnimationFrame(_prerenderHandle); _prerenderHandle = 0; }
+  const queue = mode.tabs.filter(t => t.id !== skipTabId);
+  const step = () => {
+    _prerenderHandle = 0;
+    if (state.activeModeId !== mode.id) return;
+    const tab = queue.shift();
+    if (!tab) return;
+    // Never re-render the tab the user is actually on. It was already drawn by
+    // switchTab, and rebuilding it here would throw away whatever they have
+    // since opened, typed or scrolled to.
+    if (tab.id !== state.activeTab) renderPanel(mode, tab);
+    if (queue.length) _prerenderHandle = requestAnimationFrame(step);
+  };
+  _prerenderHandle = requestAnimationFrame(step);
 }
 
 export function setMode(modeId) {
@@ -64,10 +99,10 @@ export function setMode(modeId) {
   state.modeTabs = mode.tabs.map(t => t.id);
 
   document.body.dataset.mode = mode.id;            // drives the accent theme
-  const label = document.getElementById('mode-switcher-label');
-  if (label) label.textContent = mode.label;
   const fabLabel = document.getElementById('mode-fab-label');
   if (fabLabel) fabLabel.textContent = mode.label;
+  const fab = document.getElementById('mode-fab');
+  if (fab) fab.setAttribute('aria-label', `Section: ${mode.label}. Switch section, or hold for Home`);
 
   buildNav(mode);
   buildPanels(mode);
@@ -75,23 +110,17 @@ export function setMode(modeId) {
   // Register this mode's renderers so switchTab/swipe know what to draw.
   registerRenders(Object.fromEntries(mode.tabs.map(t => [t.id, t.render])));
 
-  // Pre-render every panel so swipe neighbours already have content. Each render
-  // is isolated: a failing page shows an error card instead of aborting the mode.
-  for (const t of mode.tabs) {
-    try {
-      t.render();
-    } catch (err) {
-      console.error(`[modes] render failed for "${mode.id}/${t.id}":`, err);
-      const panel = document.getElementById(`tab-${t.id}`);
-      if (panel) panel.innerHTML = errorCard(t.label, err);
-    }
-  }
-
   // Land on the remembered tab for this mode (or its first tab). No animation
   // on a mode change — it's a context switch, not a swipe.
   const remembered = state.modeLastTab[mode.id];
   const target = mode.tabs.some(t => t.id === remembered) ? remembered : mode.tabs[0].id;
+
+  // Only the landing tab is rendered synchronously. Its swipe neighbours are
+  // still pre-rendered — so a swipe never arrives at an empty panel — but off
+  // the critical path, which is what kept a mode change costing ~30 ms.
+  renderPanel(mode, mode.tabs.find(t => t.id === target));
   switchTab(target, false);
+  schedulePrerender(mode, target);
 
   // Subtle fade so a mode switch reads as a context change, not a hard reload.
   // (No sideways swipe — that's reserved for moving between pages in a mode.)
@@ -101,17 +130,18 @@ export function setMode(modeId) {
 
 function navButton(tab, position) {
   const icon = `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${tab.icon}</svg>`;
+  const shared = `class="nav-item" type="button" role="tab" data-tab="${tab.id}" aria-controls="tab-${tab.id}" aria-selected="false"`;
   return position === 'bottom'
-    ? `<button class="nav-item" data-tab="${tab.id}">${icon}<span>${tab.label}</span></button>`
-    : `<button class="nav-item" data-tab="${tab.id}">${icon}${tab.label}</button>`;
+    ? `<button ${shared}>${icon}<span>${tab.label}</span></button>`
+    : `<button ${shared}>${icon}${tab.label}</button>`;
 }
 
 function buildNav(mode) {
   const top = document.getElementById('nav-top');
   const bottom = document.getElementById('nav-bottom');
-  if (top) top.innerHTML = mode.tabs.map(t => navButton(t, 'top')).join('');
+  if (top) { top.setAttribute('role', 'tablist'); top.innerHTML = mode.tabs.map(t => navButton(t, 'top')).join(''); }
   else console.error('[modes] #nav-top not found');
-  if (bottom) bottom.innerHTML = mode.tabs.map(t => navButton(t, 'bottom')).join('');
+  if (bottom) { bottom.setAttribute('role', 'tablist'); bottom.innerHTML = mode.tabs.map(t => navButton(t, 'bottom')).join(''); }
   else console.error('[modes] #nav-bottom not found');
 }
 
@@ -119,7 +149,7 @@ function buildPanels(mode) {
   const slider = document.getElementById('tab-slider');
   if (!slider) { console.error('[modes] #tab-slider not found — cannot build panels'); return; }
   slider.innerHTML = mode.tabs.map(t =>
-    `<div class="tab-panel" id="tab-${t.id}" data-tab="${t.id}"></div>`).join('');
+    `<div class="tab-panel" id="tab-${t.id}" data-tab="${t.id}" role="tabpanel" tabindex="0"></div>`).join('');
 }
 
 // ---- mode switcher tap/hold ------------------------------------------------
@@ -153,6 +183,12 @@ function wireSwitcher(el) {
     if (_suppressClick) { _suppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
     openModeMenu();
   });
+  // Keyboard parity with tap/hold: Enter or Space opens the picker, and
+  // Shift+Enter is the accessible equivalent of holding for Home.
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); goTo('home', 'today'); return; }
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); openModeMenu(); }
+  });
   el.addEventListener('dblclick', (e) => { e.preventDefault(); _suppressClick = true; goTo('home', 'today'); });
 }
 
@@ -161,8 +197,11 @@ function ensureModeFab() {
   const fab = document.createElement('button');
   fab.id = 'mode-fab';
   fab.className = 'mode-fab';
-  fab.setAttribute('aria-label', 'Switch section · hold for Home');
-  fab.innerHTML = `<span class="mode-fab-dot"></span><span class="mode-fab-label" id="mode-fab-label">${getMode(state.activeModeId).label}</span>`;
+  fab.type = 'button';
+  fab.setAttribute('aria-haspopup', 'menu');
+  fab.setAttribute('aria-expanded', 'false');
+  fab.setAttribute('aria-label', `Section: ${getMode(state.activeModeId).label}. Switch section, or hold for Home`);
+  fab.innerHTML = `<span class="mode-fab-dot" aria-hidden="true"></span><span class="mode-fab-label" id="mode-fab-label">${getMode(state.activeModeId).label}</span>`;
   document.body.appendChild(fab);
   wireSwitcher(fab);
   if (!localStorage.getItem('seen_fab_hint')) {
@@ -182,8 +221,16 @@ function openModeMenu() {
         </button>`).join('')}
     </div>`;
   openModal(html, 'Switch mode');
+  const fab = document.getElementById('mode-fab');
+  if (fab) fab.setAttribute('aria-expanded', 'true');
+  const collapse = () => { if (fab) fab.setAttribute('aria-expanded', 'false'); };
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay) overlay.addEventListener('click', collapse, { once: true });
+  const closeBtn = document.getElementById('modal-close-btn');
+  if (closeBtn) closeBtn.addEventListener('click', collapse, { once: true });
   document.querySelectorAll('.mode-menu-item').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.mode;
+    collapse();
     closeModal();
     if (id !== state.activeModeId) setMode(id);
   }));

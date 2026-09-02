@@ -8,11 +8,11 @@
 // ============================================================
 
 import { state } from './state.js';
-import { dbSaveHabitConfig } from './db.js';
+import { persistDocument } from './data/repository.js';
+import { reportSaveResult } from './ui/saveFeedback.js';
 
 const LS_KEY = 'dontdie_habitcfg_v1';
 const VERSION = 1;
-const stampMs = s => Date.parse(s || 0) || 0;
 
 function empty() { return { version: VERSION, updatedAt: null, builtin: {}, custom: {} }; }
 function loadLocal() { try { const r = localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
@@ -25,25 +25,34 @@ function normalize(d) {
   return d;
 }
 
-export function initHabitConfig(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stampMs(remote.updatedAt) >= stampMs(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || empty();
-  chosen = normalize(chosen);
+export function initHabitConfig(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || empty());
   if (!chosen.updatedAt) chosen.updatedAt = new Date().toISOString();
   state.habitConfig = chosen;
   saveLocal(chosen);
-  if (!remote || stampMs(chosen.updatedAt) > stampMs(remote.updatedAt)) dbSaveHabitConfig(chosen).catch(() => {});
 }
 
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptHabitConfig(data) {
+  state.habitConfig = normalize(data);
+  saveLocal(state.habitConfig);
+}
+
+// `habit_config` is NOT installed in the production project. The repository
+// stores it durably on device and the reconciler simply records the table as
+// missing, so the feature keeps working without a cloud copy.
 export function saveHabitConfig() {
   const d = state.habitConfig;
-  if (!d) return;
+  if (!d) return Promise.resolve({ status: 'local' });
   d.updatedAt = new Date().toISOString();
   saveLocal(d);
-  dbSaveHabitConfig(d).catch(() => {});
+  return persistDocument('habitConfig', d).then(result => {
+    reportSaveResult('Habit settings', result);
+    return result;
+  });
 }
+
+export { normalize as normalizeHabitConfigDocument };
 
 export function getBuiltinOverride(id) { return (state.habitConfig && state.habitConfig.builtin[id]) || null; }
 export function hasBuiltinOverride(id) { return !!getBuiltinOverride(id); }

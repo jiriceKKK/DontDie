@@ -1,22 +1,26 @@
+/* eslint-env browser */
 import { state } from './state.js';
 import { formatDate, today, getNDaysAgo } from './utils/date.js';
-import {
-  dbGetLogsForRange, dbGetCustomHabits, dbCheckConnection,
-  dbGetSplitConfig, dbGetMentalStore, dbGetStimulationStore, dbGetSchoolStore,
-  dbGetHabitConfig, dbGetMindTextsStore,
-} from './db.js';
-import { initHabitConfig } from './habitConfig.js';
-import { initSplit } from './split/store.js';
-import { initMental } from './mental/store.js';
-import { initMindTexts } from './mental/texts/store.js';
-import { initStimulation } from './stimulation/store.js';
-import { initSchool } from './school/store.js';
+import { initHabitConfig, adoptHabitConfig, normalizeHabitConfigDocument } from './habitConfig.js';
+import { initSplit, adoptSplit, normalizeSplitDocument } from './split/store.js';
+import { initMental, adoptMental, normalizeMentalDocument } from './mental/store.js';
+import { initMindTexts, adoptMindTexts, normalizeMindTextsDocument } from './mental/texts/store.js';
+import { initStimulation, adoptStimulation, normalizeStimulationDocument } from './stimulation/store.js';
+import { initSchool, adoptSchool, normalizeSchoolDocument } from './school/store.js';
 import { initSwipe } from './navigation.js';
 import { initModes } from './modes/controller.js';
-import { setOnline, startRetryInterval } from './sync.js';
+import { watchConnectivity } from './sync.js';
 import { loadHiddenBuiltins } from './tabs/settings.js';
 import { initAuth, isConfigValid } from './auth.js';
 import { escapeHtml } from './ui/dom.js';
+import { requireUserId } from './session.js';
+import {
+  initRepositories, loadLocalDocuments, loadLocalLogs, loadLocalCustomHabits,
+  hydrateFromRemote, onRemoteAdopted, flush, localStoreReady,
+} from './data/repository.js';
+import { initSyncStatus } from './ui/syncStatus.js';
+import { reconcileHabitStimLinks } from './habitStimLink.js';
+import { saveStimulation } from './stimulation/store.js';
 
 // Last-resort visible error so a fatal startup failure never leaves a blank
 // black screen. Uses inline styles so it works even if CSS failed to load.
@@ -34,63 +38,104 @@ function showFatal(err) {
     <pre style="color:#fbbf24;white-space:pre-wrap;font-size:12px;">${escapeHtml(String((err && err.stack) || err))}</pre>`;
 }
 
+/** Per-store normalisers handed to the legacy localStorage migration. */
+const NORMALIZERS = {
+  split: normalizeSplitDocument,
+  mental: normalizeMentalDocument,
+  mindTexts: normalizeMindTextsDocument,
+  stimulation: normalizeStimulationDocument,
+  school: normalizeSchoolDocument,
+  habitConfig: normalizeHabitConfigDocument,
+};
+
+/** Re-seed an in-memory store after the reconciler adopted a cloud copy. */
+const ADOPTERS = {
+  split: adoptSplit,
+  mental: adoptMental,
+  mindTexts: adoptMindTexts,
+  stimulation: adoptStimulation,
+  school: adoptSchool,
+  habitConfig: adoptHabitConfig,
+};
+
 async function startApp() {
  try {
   document.getElementById('app').classList.remove('hidden');
 
-  // Load everything in parallel before rendering. Every call below is
-  // owner-scoped and requires the authenticated session established by the
-  // gate; none of them can run anonymously.
-  const rangeEnd   = formatDate(today());
-  const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back
+  const userId = requireUserId();
 
-  const [logsRes, customRes, connRes, splitRes, mentalRes, stimRes, schoolRes, habitCfgRes, mindTextsRes] = await Promise.all([
-    dbGetLogsForRange(rangeStart, rangeEnd),
-    dbGetCustomHabits(),
-    dbCheckConnection(),
-    dbGetSplitConfig(),
-    dbGetMentalStore(),
-    dbGetStimulationStore(),
-    dbGetSchoolStore(),
-    dbGetHabitConfig(),
-    dbGetMindTextsStore(),
+  // 1. Local first. Open IndexedDB, migrate the legacy localStorage documents
+  //    non-destructively, and read back whatever this device already holds.
+  //    No network call blocks anything below this point.
+  await initRepositories(userId, NORMALIZERS);
+
+  const [documents, logs, customHabits] = await Promise.all([
+    loadLocalDocuments(),
+    loadLocalLogs(),
+    loadLocalCustomHabits(),
   ]);
 
-  state.logsByDate   = logsRes.data   || {};
-  state.customHabits = customRes.data || [];
-  state.connectionOk = connRes;
-  state.initialized  = true;
+  state.logsByDate = logs || {};
+  state.customHabits = customHabits || [];
+  state.initialized = true;
 
-  // Built-in overrides + custom-habit meta (cloud → local → empty). Must run
-  // before any habit render so scheduling/labels reflect overrides.
-  initHabitConfig(habitCfgRes.data);
-
-  // Seed/load split + mental + stimulation + school data (cloud → local → default).
-  initSplit(splitRes.data);
-  initMental(mentalRes.data);
-  initMindTexts(mindTextsRes.data);
-  initStimulation(stimRes.data);
-  initSchool(schoolRes.data);
-
-  if (!connRes) {
-    setOnline(false);
-    startRetryInterval();
-  }
+  // Built-in overrides + custom-habit meta must exist before any habit render.
+  initHabitConfig(documents.habitConfig);
+  initSplit(documents.split);
+  initMental(documents.mental);
+  initMindTexts(documents.mindTexts);
+  initStimulation(documents.stimulation);
+  initSchool(documents.school);
 
   loadHiddenBuiltins();
 
-  // The mode controller builds the nav + panels for the default mode,
-  // registers its renderers, pre-renders, and positions the slider.
+  // 2. Build the shell against local state. Cloud latency cannot delay this.
   initModes();
-
-  // Touch swipe is mode-agnostic (reads state.modeTabs) — init once.
   initSwipe();
+  initSyncStatus();
+  watchConnectivity();
 
-  window.addEventListener('online',  () => setOnline(true));
-  window.addEventListener('offline', () => setOnline(false));
+  // 3. Reconcile with the cloud in the background, then drain the outbox.
+  //    Failures here are reported by the sync chip, never by a blank screen.
+  reconcileInBackground(userId);
  } catch (err) {
   showFatal(err);
  }
+}
+
+function reconcileInBackground(userId) {
+  onRemoteAdopted((storeId, data) => {
+    const adopt = ADOPTERS[storeId];
+    if (!adopt) return;
+    try {
+      adopt(data);
+      // Re-render the visible tab so an adopted cloud copy is not invisible
+      // until the next navigation.
+      document.dispatchEvent(new CustomEvent('app:store-adopted', { detail: { storeId } }));
+    } catch (err) {
+      console.error(`[sync] adopting ${storeId} failed:`, err);
+    }
+  });
+
+  const rangeEnd = formatDate(today());
+  const rangeStart = formatDate(getNDaysAgo(84)); // 12 weeks back, as before
+
+  Promise.resolve()
+    .then(() => flush())
+    .then(() => hydrateFromRemote({ rangeStart, rangeEnd }))
+    .then(async () => {
+      if (!localStoreReady()) return;
+      state.logsByDate = await loadLocalLogs();
+      state.customHabits = await loadLocalCustomHabits();
+      state.connectionOk = true;
+      // Derive the linked stimulation entries from the durable habit state, so
+      // a toggle whose two halves were separated by a failure converges.
+      if (reconcileHabitStimLinks(state.logsByDate)) saveStimulation();
+      document.dispatchEvent(new CustomEvent('app:store-adopted', { detail: { storeId: 'habits' } }));
+    })
+    .catch(err => console.warn('[sync] background reconciliation failed:', err && err.message));
+
+  void userId;
 }
 
 async function main() {

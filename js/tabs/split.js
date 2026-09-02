@@ -93,84 +93,135 @@ function renderSplitContent(view, todayDow) {
   else if (view === 'gymonly')  container.innerHTML = renderGymOnly(todayDow, edit);
   else                          container.innerHTML = renderMobility(todayDow, edit);
 
-  wireContent(container, todayDow);
+  wireContent(container);
 }
 
 function reduceMotion() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
 
-// Pixel-height accordion: animate `body` between 0 and its real content height,
-// then hand the resting state back to CSS (height:auto when open, 0 when
-// collapsed). overflow:hidden means nothing can leak below the header at rest,
-// and a single `height` transition stays smooth/stable on mobile. The class is
-// toggled by the caller (drives the chevron + the resting CSS height); this just
-// animates the gap. Safe to interrupt mid-flight (rapid open/close).
-function animateCollapse(body, willBeOpen) {
-  if (!body) return;
-  // Reduced motion: skip the animation; the class toggle + CSS resting height
-  // already produced the (instant) change.
-  if (reduceMotion()) return;
+// Pixel-height accordion.
+//
+// THE BUG THIS REPLACES: the previous version toggled `.open` and only then
+// measured the starting height. Because the resting CSS for an open body is
+// `height: auto`, that measurement already returned the fully-open layout, so
+// start and end were identical, no transition ever ran, and `transitionend`
+// never fired — the card snapped open with no feedback. It appeared to "need a
+// double tap" only because a second activation inside the 360 ms fallback
+// window still found the stale inline pixel height and therefore did animate.
+//
+// The order below is the fix: measure the genuinely current height FIRST, then
+// apply the state, then measure the natural end height once, lock the start,
+// and start the transition on the next frame.
+const COLLAPSE_MS = 280;
+let _sectionSeq = 0;
 
-  // Current visual height first, so an interrupt animates from where we are.
+/** Stop an in-flight run without touching the element's current geometry. */
+function cancelRun(body) {
+  const run = body._collapseRun;
+  if (!run) return;
+  if (run.frame) cancelAnimationFrame(run.frame);
+  if (run.timer) clearTimeout(run.timer);
+  if (run.onEnd) body.removeEventListener('transitionend', run.onEnd);
+  body._collapseRun = null;
+}
+
+/** Hand the resting state back to CSS. */
+function settleToCss(body) {
+  cancelRun(body);
+  body.style.height = '';
+  body.style.overflow = '';
+  body.style.willChange = '';
+}
+
+/**
+ * Animate one section between its collapsed and open heights.
+ * @param {Element} classHost element carrying `.open` (the card, or the body)
+ * @param {HTMLElement} body  element whose height animates
+ * @param {boolean} willBeOpen
+ */
+function animateCollapse(classHost, body, willBeOpen) {
+  if (!body) return;
+
+  // Take over from wherever a previous run had got to. getBoundingClientRect
+  // reports the CURRENT animated height, so a reversal starts from what the
+  // user can actually see.
+  cancelRun(body);
   const startH = body.getBoundingClientRect().height;
 
-  // Drop any in-flight finish handler so it can't clobber this run.
-  if (body._collapseEnd) { body.removeEventListener('transitionend', body._collapseEnd); body._collapseEnd = null; }
-  if (body._collapseTimer) { clearTimeout(body._collapseTimer); body._collapseTimer = null; }
+  // Only now apply the state, so the measurement above was honest.
+  classHost.classList.toggle('open', willBeOpen);
+
+  if (reduceMotion()) { settleToCss(body); return; }
+
+  // One measurement of the natural end height, with the new state applied.
+  let endH = 0;
+  if (willBeOpen) {
+    body.style.height = 'auto';
+    endH = body.getBoundingClientRect().height;
+  }
 
   body.style.overflow = 'hidden';
   body.style.willChange = 'height';
-
-  let endH;
-  if (willBeOpen) {
-    body.style.height = 'auto';                 // measure natural content height
-    endH = body.getBoundingClientRect().height;
-  } else {
-    endH = 0;
-  }
-
   body.style.height = startH + 'px';
-  void body.offsetHeight;                       // reflow to lock the start height
-  requestAnimationFrame(() => { body.style.height = endH + 'px'; });
+  void body.offsetHeight;                       // lock the start height
 
-  const finish = () => {
-    body.style.height = '';                      // CSS resting state takes over
-    body.style.overflow = '';
-    body.style.willChange = '';
-    if (body._collapseEnd) body.removeEventListener('transitionend', body._collapseEnd);
-    if (body._collapseTimer) clearTimeout(body._collapseTimer);
-    body._collapseEnd = null;
-    body._collapseTimer = null;
+  // Nothing to animate (already there, or an empty section): settle now rather
+  // than waiting for a transitionend that will never arrive.
+  if (Math.abs(endH - startH) < 0.5) { settleToCss(body); return; }
+
+  const run = { frame: 0, timer: 0, onEnd: null };
+  body._collapseRun = run;
+
+  run.frame = requestAnimationFrame(() => {
+    run.frame = 0;
+    if (body._collapseRun !== run) return;      // superseded by a reversal
+    body.style.height = endH + 'px';
+  });
+
+  run.onEnd = (e) => {
+    if (e.target !== body || e.propertyName !== 'height') return;
+    if (body._collapseRun !== run) return;      // a newer run owns the element
+    settleToCss(body);
   };
-  const onEnd = (e) => { if (e.target === body && e.propertyName === 'height') finish(); };
-  body._collapseEnd = onEnd;
-  body.addEventListener('transitionend', onEnd);
-  // Fallback: transitionend won't fire if the height didn't actually change.
-  body._collapseTimer = setTimeout(finish, 360);
+  body.addEventListener('transitionend', run.onEnd);
+  // Safety net only: a stale timer can never win, because settleToCss checks
+  // which run owns the element first.
+  run.timer = setTimeout(() => { if (body._collapseRun === run) settleToCss(body); }, COLLAPSE_MS + 140);
+}
+
+/** One activation = one state change, with aria kept truthful. */
+function toggleSection(classHost, body, header) {
+  const willOpen = !classHost.classList.contains('open');
+  animateCollapse(classHost, body, willOpen);
+  if (header) header.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 }
 
 // Open/close behaviour for collapsible cards + sections. These attach to fresh
 // child elements on every render, so they never stack. (The delegated edit
 // actions live on #split-content, wired once in renderSplit.)
-function wireContent(container, todayDow) {
-  container.querySelectorAll('.split-day-header').forEach(h =>
-    h.addEventListener('click', () => {
-      const card = h.closest('.split-day-card');
-      if (!card) return;
-      const willOpen = !card.classList.contains('open');
-      card.classList.toggle('open');
-      animateCollapse(card.querySelector('.split-day-body'), willOpen);
-    }));
+// The headers are real buttons, so Enter/Space activation goes through exactly
+// the same path as a tap — no separate keyboard branch to drift out of sync.
+function wireContent(container) {
+  container.querySelectorAll('.split-day-header').forEach(header => {
+    const card = header.closest('.split-day-card');
+    if (!card) return;
+    const body = card.querySelector('.split-day-body');
+    if (!body) return;
+    if (!body.id) body.id = 'split-day-body-' + (++_sectionSeq);
+    header.setAttribute('aria-controls', body.id);
+    header.setAttribute('aria-expanded', card.classList.contains('open') ? 'true' : 'false');
+    header.addEventListener('click', () => toggleSection(card, body, header));
+  });
 
-  container.querySelectorAll('.collapsible-header').forEach(h =>
-    h.addEventListener('click', () => {
-      const body = h.nextElementSibling;
-      if (!body || !body.classList.contains('collapsible-body')) return;
-      const willOpen = !body.classList.contains('open');
-      body.classList.toggle('open');
-      animateCollapse(body, willOpen);
-    }));
+  container.querySelectorAll('.collapsible-header').forEach(header => {
+    const body = header.nextElementSibling;
+    if (!body || !body.classList.contains('collapsible-body')) return;
+    if (!body.id) body.id = 'split-collapsible-' + (++_sectionSeq);
+    header.setAttribute('aria-controls', body.id);
+    header.setAttribute('aria-expanded', body.classList.contains('open') ? 'true' : 'false');
+    header.addEventListener('click', () => toggleSection(body, body, header));
+  });
 }
 
 function openClassFor(isToday, edit) {
@@ -190,13 +241,13 @@ function renderFullWeek(todayDow, edit) {
     const isToday = day.dow === todayDow;
     html += `
       <div class="split-day-card${isToday ? ' today-card' : ''}${openClassFor(isToday, edit)}" data-day="${day.dow}">
-        <div class="split-day-header">
+        <button type="button" class="split-day-header" aria-expanded="false">
           <div>
             <div class="split-day-title">${esc(day.name)}</div>
             <div class="split-day-subtitle">${esc(day.label)}</div>
           </div>
           ${chevronSvg}
-        </div>
+        </button>
         <div class="split-day-body">
           <div class="split-day-body-inner">
             <div class="split-activity-list">
@@ -230,10 +281,10 @@ function renderGymOnly(todayDow, edit) {
 
     html += `
       <div class="split-day-card${isToday ? ' today-card' : ''}${openClassFor(isToday, edit)}" data-day="${day.dow}">
-        <div class="split-day-header">
+        <button type="button" class="split-day-header" aria-expanded="false">
           <div><div class="split-day-title">${esc(title)}</div></div>
           ${chevronSvg}
-        </div>
+        </button>
         <div class="split-day-body">
           <div class="split-day-body-inner">
             <div class="gym-exercises">
@@ -296,9 +347,9 @@ function renderVolume(edit) {
   // Collapsed by default in normal mode (matches the original); auto-open while
   // editing so you can watch volume change as you adjust sets.
   return `
-    <div class="collapsible-header" id="volume-toggle">
+    <button type="button" class="collapsible-header" id="volume-toggle" aria-expanded="false">
       Weekly Volume ${chevronSvg}
-    </div>
+    </button>
     <div class="collapsible-body${edit ? ' open' : ''}">
       <div class="collapsible-inner">
         <div class="volume-grid">${chips}</div>
@@ -315,13 +366,13 @@ function renderMobility(todayDow, edit) {
 
   let html = `
     <div class="split-day-card open" style="margin-bottom:10px;">
-      <div class="split-day-header">
+      <button type="button" class="split-day-header" aria-expanded="false">
         <div>
           <div class="split-day-title">Every Day — Pre-workout Warm-up</div>
           <div class="split-day-subtitle">${esc(warmup.duration)}</div>
         </div>
         ${chevronSvg}
-      </div>
+      </button>
       <div class="split-day-body">
         <div class="split-day-body-inner">
           <div class="mobility-exercise-list">
@@ -366,13 +417,13 @@ function renderMobility(todayDow, edit) {
 
     html += `
       <div class="split-day-card${isToday ? ' today-card' : ''}${openClassFor(isToday, edit)}" data-day="${day.dow}">
-        <div class="split-day-header">
+        <button type="button" class="split-day-header" aria-expanded="false">
           <div>
             <div class="split-day-title" style="display:flex;align-items:center;gap:8px;">${esc(day.name)} ${pailsBadge}</div>
             <div class="split-day-subtitle">${esc(mob.label || '')}</div>
           </div>
           ${chevronSvg}
-        </div>
+        </button>
         <div class="split-day-body">
           <div class="split-day-body-inner">
             ${noteHtml}
@@ -390,9 +441,9 @@ function renderMobility(todayDow, edit) {
     </div>`).join('');
 
   html += `
-    <div class="collapsible-header" id="mobility-notes-toggle">
+    <button type="button" class="collapsible-header" id="mobility-notes-toggle" aria-expanded="false">
       Notes & Cues ${chevronSvg}
-    </div>
+    </button>
     <div class="collapsible-body">
       <div class="mobility-notes-list">${notesHtml}</div>
     </div>`;

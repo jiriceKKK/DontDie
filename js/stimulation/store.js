@@ -9,20 +9,18 @@
 // ============================================================
 
 import { state } from '../state.js';
-import { dbSaveStimulationStore } from '../db.js';
-import { showToast } from '../ui/toast.js';
+import { persistDocument } from '../data/repository.js';
+import { reportSaveResult } from '../ui/saveFeedback.js';
 import { formatDate, today, addDays } from '../utils/date.js';
 import { buildDefaultStimulation, DEFAULT_SETTINGS, CATEGORY_IDS } from './defaultActivities.js';
 
 const LS_KEY = 'dontdie_stim_v1';
 const VERSION = 1;
-let _cloudOk = true;
 
 function uid() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
-const stampMs = s => Date.parse(s || 0) || 0;
 const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
 function loadLocal() {
@@ -59,31 +57,30 @@ function normalize(d) {
 
 // ---- load / save ----------------------------------------------------------
 
-export function initStimulation(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stampMs(remote.updatedAt) >= stampMs(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || buildDefaultStimulation();
-
-  chosen = normalize(chosen);
+export function initStimulation(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || buildDefaultStimulation());
   if (!chosen.updatedAt) chosen.updatedAt = new Date().toISOString();
   state.stimulation = chosen;
   saveLocal(chosen);
+}
 
-  if (!remote || stampMs(chosen.updatedAt) > stampMs(remote.updatedAt)) {
-    dbSaveStimulationStore(chosen).catch(() => {});
-  }
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptStimulation(data) {
+  state.stimulation = normalize(data);
+  saveLocal(state.stimulation);
 }
 
 export function saveStimulation() {
   const d = state.stimulation;
   d.updatedAt = new Date().toISOString();
   saveLocal(d);
-  dbSaveStimulationStore(d).then(({ error }) => {
-    if (error && _cloudOk) { _cloudOk = false; showToast('Saved on this device · cloud sync unavailable', 'warning'); }
-    else if (!error && !_cloudOk) { _cloudOk = true; showToast('Synced', 'success'); }
+  return persistDocument('stimulation', d).then(result => {
+    reportSaveResult('Stimulation', result);
+    return result;
   });
 }
+
+export { normalize as normalizeStimulationDocument };
 
 export function getStimulation() { return state.stimulation; }
 export function getSettings() { return state.stimulation.settings; }
@@ -273,7 +270,10 @@ export function entrySourceBadge(e) {
 
 // Push a fully-formed entry (with source + metadata) into a block. Used by the
 // habit-link and Screen Time import paths. Returns the new entry's id.
-export function addEntryFull(date, idx, entry) {
+// `defer` mutates the document without persisting, so a caller that is
+// composing one user action (a stimulation-linked habit toggle) can write the
+// habit log and this document in a single IndexedDB transaction.
+export function addEntryFull(date, idx, entry, { defer = false } = {}) {
   const day = ensureDay(date);
   if (!day.blocks[idx]) day.blocks[idx] = [];
   const e = {
@@ -285,7 +285,7 @@ export function addEntryFull(date, idx, entry) {
     durationMinutes: Math.max(1, num(entry.durationMinutes, 15)),
   };
   day.blocks[idx].push(e);
-  saveStimulation();
+  if (!defer) saveStimulation();
   return e.id;
 }
 
@@ -330,7 +330,7 @@ export function findHabitLinkEntries(date, habitId) {
 
 // Remove every habit-linked entry for a habit/date. Never touches manual logs.
 // Returns the count removed; saves once if anything changed.
-export function removeHabitLinkEntries(date, habitId) {
+export function removeHabitLinkEntries(date, habitId, { defer = false } = {}) {
   const day = state.stimulation.logs[date];
   if (!day || !day.blocks) return 0;
   let removed = 0;
@@ -341,7 +341,7 @@ export function removeHabitLinkEntries(date, habitId) {
     removed += before - day.blocks[idx].length;
     if (day.blocks[idx].length === 0) delete day.blocks[idx];
   }
-  if (removed) saveStimulation();
+  if (removed && !defer) saveStimulation();
   return removed;
 }
 

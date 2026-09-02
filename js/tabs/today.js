@@ -2,9 +2,10 @@ import { state } from '../state.js';
 import { CATEGORY_COLORS, CATEGORY_LABELS, DAY_FULL, MONTH_NAMES } from '../constants.js';
 import { formatDate, today, addDays, isSameDay, parseDate, friendlyDay } from '../utils/date.js';
 import { getHabitsForDate, getLogsForDate, isCompleted, getDayStats, computeStreak } from '../habits.js';
-import { dbUpsertLog } from '../db.js';
 import { syncHabitStimLink } from '../habitStimLink.js';
-import { queueSync, setOnline, startRetryInterval } from '../sync.js';
+import { persistHabitLog } from '../data/repository.js';
+import { isPersisted } from '../ui/saveFeedback.js';
+import { getStimulation } from '../stimulation/store.js';
 import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
 import { launchConfetti } from '../ui/confetti.js';
@@ -13,6 +14,11 @@ import { escapeHtml, safeColor, safeId } from '../ui/dom.js';
 
 // toggleHabit lives here (not in habits.js) because it calls renderTodayHabits,
 // which would create a circular import if it were in a shared module.
+// One user action, one durable local transaction. The habit log, the linked
+// Stimulation document and BOTH outbox operations are written together, so a
+// crash or a dead network can never separate the two halves. There is no
+// optimistic revert any more: the outbox guarantees the cloud write is
+// attempted, so the only failure worth undoing is a local one.
 export async function toggleHabit(dateStr, habitId, currentState) {
   const newValue = !currentState;
 
@@ -20,27 +26,29 @@ export async function toggleHabit(dateStr, habitId, currentState) {
   state.logsByDate[dateStr][habitId] = newValue;
 
   // Mirror the completion into Stimulation if this habit is linked to an
-  // activity (no-op otherwise). Created/removed optimistically with the toggle.
-  syncHabitStimLink(dateStr, habitId, newValue);
+  // activity (no-op otherwise). Deferred so it joins the same transaction.
+  const linkChanged = syncHabitStimLink(dateStr, habitId, newValue, { defer: true });
 
   if (dateStr === formatDate(today())) {
     renderTodayHabits(today());
     updateProgressRing(today());
   }
 
-  const { error } = await dbUpsertLog(dateStr, habitId, newValue);
+  const result = await persistHabitLog(
+    dateStr, habitId, newValue,
+    linkChanged ? { storeId: 'stimulation', data: getStimulation() } : null,
+  );
 
-  if (error) {
+  if (!isPersisted(result)) {
+    // The change could NOT be stored on this device. Saying nothing here would
+    // be the one genuinely dishonest outcome, so undo and say so.
     state.logsByDate[dateStr][habitId] = currentState;
-    syncHabitStimLink(dateStr, habitId, currentState, { silent: true }); // revert the linked log too
+    if (linkChanged) syncHabitStimLink(dateStr, habitId, currentState, { silent: true, defer: true });
     if (dateStr === formatDate(today())) {
       renderTodayHabits(today());
       updateProgressRing(today());
     }
-    queueSync(dateStr, habitId, newValue);
-    setOnline(false);
-    showToast('Sync failed — will retry', 'error');
-    startRetryInterval();
+    showToast('This device could not save that change', 'error');
   }
 }
 

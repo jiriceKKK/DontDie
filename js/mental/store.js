@@ -8,19 +8,17 @@
 // ============================================================
 
 import { state } from '../state.js';
-import { dbSaveMentalStore } from '../db.js';
-import { showToast } from '../ui/toast.js';
+import { persistDocument } from '../data/repository.js';
+import { reportSaveResult } from '../ui/saveFeedback.js';
 import { formatDate, today, addDays } from '../utils/date.js';
 
 const LS_KEY = 'dontdie_mh_v1';
 const VERSION = 1;
-let _cloudOk = true;
 
 function uid() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
-const stampMs = s => Date.parse(s || 0) || 0;
 
 function emptyData() {
   return { version: VERSION, updatedAt: null, checkins: {}, tasks: [], journal: [] };
@@ -45,31 +43,30 @@ function normalize(d) {
 
 // ---- load / save ----------------------------------------------------------
 
-export function initMental(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stampMs(remote.updatedAt) >= stampMs(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || emptyData();
-
-  chosen = normalize(chosen);
+export function initMental(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || emptyData());
   if (!chosen.updatedAt) chosen.updatedAt = new Date().toISOString();
   state.mental = chosen;
   saveLocal(chosen);
+}
 
-  if (!remote || stampMs(chosen.updatedAt) > stampMs(remote.updatedAt)) {
-    dbSaveMentalStore(chosen).catch(() => {});
-  }
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptMental(data) {
+  state.mental = normalize(data);
+  saveLocal(state.mental);
 }
 
 export function saveMental() {
   const d = state.mental;
   d.updatedAt = new Date().toISOString();
   saveLocal(d);
-  dbSaveMentalStore(d).then(({ error }) => {
-    if (error && _cloudOk) { _cloudOk = false; showToast('Saved on this device · cloud sync unavailable', 'warning'); }
-    else if (!error && !_cloudOk) { _cloudOk = true; showToast('Synced', 'success'); }
+  return persistDocument('mental', d).then(result => {
+    reportSaveResult('Mind', result);
+    return result;
   });
 }
+
+export { normalize as normalizeMentalDocument };
 
 export function getMental() { return state.mental; }
 

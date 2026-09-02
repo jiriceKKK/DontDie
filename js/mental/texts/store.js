@@ -15,21 +15,19 @@
 // ============================================================
 
 import { state } from '../../state.js';
-import { dbSaveMindTextsStore } from '../../db.js';
-import { showToast } from '../../ui/toast.js';
+import { persistDocument } from '../../data/repository.js';
+import { reportSaveResult } from '../../ui/saveFeedback.js';
 
 const LS_KEY = 'dontdie_mind_texts_v1';
 const SCHEMA_VERSION = 2;
 const STATUSES = ['unread', 'reading', 'reflection', 'completed'];
 
-let _cloudOk = true;
 let _cloudTimer = null;
 
 function uid() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
-const stampMs = s => Date.parse(s || 0) || 0;
 const nowIso = () => new Date().toISOString();
 const numOr = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
@@ -175,22 +173,20 @@ function normalize(d) {
   return d;
 }
 
-export function initMindTexts(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stampMs(remote.updatedAt) >= stampMs(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || emptyData();
-
-  chosen = normalize(chosen);
+export function initMindTexts(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || emptyData());
   if (!chosen.updatedAt) chosen.updatedAt = nowIso();
   state.mindTexts = chosen;
   saveLocal(chosen);
-
-  // Only push if local is genuinely newer than what's on the server.
-  if (!remote || stampMs(chosen.updatedAt) > stampMs(remote.updatedAt)) {
-    dbSaveMindTextsStore(chosen).catch(() => {});
-  }
 }
+
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptMindTexts(data) {
+  state.mindTexts = normalize(data);
+  saveLocal(state.mindTexts);
+}
+
+export { normalize as normalizeMindTextsDocument };
 
 // Local-only checkpoint — for high-frequency writes (reading timer, scroll
 // progress, reflection draft). Bumps updatedAt so a later cloud push wins,
@@ -210,12 +206,12 @@ export function saveMindTexts({ immediateCloud = false } = {}) {
   d.updatedAt = nowIso();
   saveLocal(d);
   if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = null; }
-  const push = () => dbSaveMindTextsStore(d).then(({ error }) => {
-    if (error && _cloudOk) { _cloudOk = false; showToast('Saved on this device · cloud sync unavailable', 'warning'); }
-    else if (!error && !_cloudOk) { _cloudOk = true; showToast('Synced', 'success'); }
-  }).catch(() => {});
-  if (immediateCloud) push();
-  else _cloudTimer = setTimeout(push, 600);
+  const push = () => persistDocument('mindTexts', d).then(result => reportSaveResult('Mind · Texts', result));
+  // Reading progress fires often; coalescing the durable write keeps one
+  // outbox operation per burst instead of one per tick.
+  if (immediateCloud) return push();
+  _cloudTimer = setTimeout(push, 600);
+  return Promise.resolve({ status: 'queued' });
 }
 
 export function getMindTexts() { return state.mindTexts; }

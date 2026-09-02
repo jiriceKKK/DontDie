@@ -396,7 +396,10 @@ code {
   width: 100%;
   overflow: visible; /* .main-content does the clipping — slider must not clip its own transformed children */
   touch-action: pan-y; /* browser handles vertical, JS handles horizontal */
-  will-change: transform;
+  /* will-change is applied by js/navigation.js for the duration of a drag and
+     cleared once it settles — left on permanently it costs a compositor layer
+     for the whole session. */
+  will-change: auto;
   /* initial position set by JS — no transition until after first switchTab */
 }
 
@@ -433,40 +436,13 @@ code {
   z-index: 60;
 }
 
-/* Mode switcher — always visible, top-left */
-.mode-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  min-height: 38px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  box-shadow: inset 0 1px 0 var(--edge-highlight);
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  letter-spacing: -0.2px;
-  transition: background var(--motion-fast) var(--ease-standard),
-              border-color var(--motion-fast) var(--ease-standard),
-              transform var(--motion-fast) var(--ease-standard);
+/* The header mode pill (.mode-switcher) was removed in Phase 2: it duplicated
+   the translucent .mode-fab above the bottom dock. On mobile the header now has
+   no content at all, so it is hidden outright and its 56px are given back to
+   the content rather than left as an empty translucent bar. */
+@media (max-width: 767px) {
+  .app-header { display: none; }
 }
-
-.mode-switcher:active { background: var(--surface-3); transform: scale(0.97); }
-
-.mode-switcher-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow), 0 0 3px var(--accent);
-  flex-shrink: 0;
-  transition: background var(--motion-slow) var(--ease-standard);
-}
-
-.mode-switcher-chevron { color: var(--text-muted); flex-shrink: 0; }
 
 /* Desktop tab row lives inside the header; hidden on mobile (bottom nav used). */
 .nav-top { display: none; }
@@ -585,7 +561,9 @@ code {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding: 16px;
-  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 34px);
+  /* Room for the bottom dock AND the translucent mode pill above it, so the
+     lower control can never cover the last actionable item on a scrolled page. */
+  padding-bottom: calc(var(--nav-bottom-height) + env(safe-area-inset-bottom) + 76px);
 }
 
 /* ============================================================
@@ -1388,12 +1366,30 @@ code {
 }
 
 .split-day-header {
+  /* A real <button>, so keyboard activation is identical to a tap. These
+     resets stop the UA button styling from leaking into the card. */
+  width: 100%;
+  margin: 0;
   padding: 14px 16px;
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  font: inherit;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  -webkit-user-select: none;
   user-select: none;
+}
+
+.split-day-header:focus-visible,
+.collapsible-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .split-day-title {
@@ -4086,3 +4082,89 @@ body [id="tab-settings"] .card { box-shadow: inset 0 1px 0 var(--edge-highlight)
 .auth-error.hidden { display: none; }
 
 .auth-card.shake { animation: shake 0.38s ease-out; }
+
+/* ============================================================
+   SYNC STATUS + CONFLICT RECOVERY (Phase 2)
+   One compact affordance in the shell. It is hidden entirely while everything
+   is synced, so an idle app carries no permanent indicator or spinner.
+   ============================================================ */
+.sync-status {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 10px;
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(62vw, 320px);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 8px 22px -10px rgba(0, 0, 0, 0.7);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-status[hidden] { display: none; }
+.sync-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.sync-status[data-tone="pending"] .sync-status-dot { background: var(--accent); }
+.sync-status[data-tone="warn"] .sync-status-dot { background: var(--warning, #fbbf24); }
+.sync-status[data-tone="alert"] { color: var(--text-primary); border-color: var(--warning, #fbbf24); }
+.sync-status[data-tone="alert"] .sync-status-dot { background: var(--warning, #fbbf24); }
+
+.sync-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-sheet-note {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.sync-conflict {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.sync-conflict-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.sync-conflict-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sync-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sync-conflict-actions button { flex: 1 1 auto; min-height: 40px; }

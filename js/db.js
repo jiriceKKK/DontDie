@@ -153,16 +153,20 @@ export async function dbCreateCustomHabit(habit) {
   const { userId } = owner();
   if (!userId) return authFailure('createCustomHabit', null);
   try {
+    // A client-generated id makes the insert idempotent: a retry after an
+    // unacknowledged success upserts the same row instead of creating a twin.
+    const row = {
+      user_id: userId,
+      name: habit.name,
+      days: habit.days,
+      color: habit.color || '#6ee7b7',
+      active: habit.active === undefined ? true : !!habit.active,
+      sort_order: habit.sort_order || 0,
+    };
+    if (habit.id) row.id = habit.id;
     const { data, error } = await getSupabase()
       .from('custom_habits')
-      .insert([{
-        user_id: userId,
-        name: habit.name,
-        days: habit.days,
-        color: habit.color || '#6ee7b7',
-        active: true,
-        sort_order: habit.sort_order || 0,
-      }])
+      .upsert([row], { onConflict: 'id' })
       .select()
       .single();
     if (error) throw error;
@@ -269,6 +273,128 @@ export const dbSaveSchoolStore      = d  => saveDoc('school_store', 'saveSchoolS
 
 export const dbGetHabitConfig       = () => getDoc('habit_config', 'getHabitConfig');
 export const dbSaveHabitConfig      = c  => saveDoc('habit_config', 'saveHabitConfig', c);
+
+// ---- revision-aware document access (Phase 2) -----------------------------
+// Migration 002 gives every JSON document table a server-maintained
+// `revision` and `updated_at`. Writes are compare-and-set: the client states
+// the revision it based its edit on, and the server applies the update only
+// while that is still current. Zero rows back means the cloud moved on, which
+// the repository turns into a recoverable conflict rather than an overwrite.
+
+/** True when the failure means the table is not installed at all. */
+export function isMissingTableError(err) {
+  if (!err) return false;
+  const code = String(err.code || '');
+  const message = String(err.message || '');
+  return code === '42P01' || code === 'PGRST205' || /does not exist|schema cache/i.test(message);
+}
+
+/**
+ * Read a document plus its revision metadata.
+ * @returns {Promise<{data: any, error: any, missing?: boolean}>}
+ */
+export async function dbGetDocumentRevisioned(table) {
+  const { userId } = owner();
+  if (!userId) {
+    const failure = authFailure('getDocument:' + table, null);
+    return { data: null, error: failure.error };
+  }
+  try {
+    const { data, error } = await getSupabase()
+      .from(table)
+      .select('data, revision, updated_at')
+      .eq('user_id', userId)
+      .eq('id', DOC_ROW_ID)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return { data: null, error: null };
+    return {
+      data: {
+        data: data.data,
+        revision: data.revision === undefined || data.revision === null ? null : Number(data.revision),
+        updatedAt: data.updated_at || null,
+      },
+      error: null,
+    };
+  } catch (err) {
+    if (isMissingTableError(err)) return { data: null, error: null, missing: true };
+    console.error('[db] getDocument:' + table + ':', err);
+    return { data: null, error: err };
+  }
+}
+
+/**
+ * Compare-and-set update. A null `expectedRevision` means "no row yet", so the
+ * insert path is used instead.
+ * @returns {Promise<{applied: boolean, revision: number|null, error: any, missing?: boolean}>}
+ */
+export async function dbWriteDocumentRevisioned(table, payload, expectedRevision) {
+  const { userId } = owner();
+  if (!userId) {
+    const failure = authFailure('writeDocument:' + table);
+    return { applied: false, revision: null, error: failure.error };
+  }
+  try {
+    if (expectedRevision === null || expectedRevision === undefined) {
+      const { data, error } = await getSupabase()
+        .from(table)
+        .insert([{ user_id: userId, id: DOC_ROW_ID, data: payload }])
+        .select('revision');
+      if (error) {
+        // 23505 = the row already exists, so the "no row yet" assumption was
+        // stale rather than wrong-headed. Report not-applied so the caller
+        // refreshes the revision and retries instead of losing the edit.
+        if (String(error.code) === '23505') return { applied: false, revision: null, error: null };
+        throw error;
+      }
+      const revision = data && data[0] ? Number(data[0].revision) : null;
+      return { applied: true, revision, error: null };
+    }
+
+    const { data, error } = await getSupabase()
+      .from(table)
+      .update({ data: payload })
+      .eq('user_id', userId)
+      .eq('id', DOC_ROW_ID)
+      .eq('revision', expectedRevision)
+      .select('revision');
+    if (error) throw error;
+    if (!data || data.length === 0) return { applied: false, revision: null, error: null };
+    return { applied: true, revision: Number(data[0].revision), error: null };
+  } catch (err) {
+    if (isMissingTableError(err)) return { applied: false, revision: null, error: null, missing: true };
+    console.error('[db] writeDocument:' + table + ':', err);
+    return { applied: false, revision: null, error: err };
+  }
+}
+
+/** Every habit log for the owner, paged so a long history is complete. */
+export async function dbGetAllLogsPaged(pageSize = 1000) {
+  const { userId } = owner();
+  if (!userId) return authFailure('getAllLogsPaged', {});
+  const map = {};
+  try {
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await getSupabase()
+        .from('habit_logs')
+        .select('date, habit_id, completed')
+        .eq('user_id', userId)
+        .order('date', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      const rows = data || [];
+      for (const row of rows) {
+        if (!map[row.date]) map[row.date] = {};
+        map[row.date][row.habit_id] = row.completed;
+      }
+      if (rows.length < pageSize) break;
+    }
+    return { data: map, error: null };
+  } catch (err) {
+    console.error('[db] getAllLogsPaged:', err);
+    return { data: map, error: err };
+  }
+}
 
 // ---- export ---------------------------------------------------------------
 export async function dbExportAll() {

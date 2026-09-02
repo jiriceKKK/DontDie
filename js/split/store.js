@@ -8,13 +8,11 @@
 // ============================================================
 
 import { state } from '../state.js';
-import { dbSaveSplitConfig } from '../db.js';
-import { showToast } from '../ui/toast.js';
+import { persistDocument } from '../data/repository.js';
+import { reportSaveResult } from '../ui/saveFeedback.js';
 import { buildDefaultSplit, SPLIT_VERSION } from './defaultSplit.js';
 
 const LS_KEY = 'dontdie_split_v1';
-
-let _cloudOk = true; // tracks last cloud push result, to toast only on change
 
 function uid() {
   if (globalThis.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -66,37 +64,35 @@ function normalize(split) {
 
 // ---- public: load / save --------------------------------------------------
 
-const stamp = s => Date.parse(s || 0) || 0;
-
-// Called once at startup with whatever Supabase returned (or null).
-export function initSplit(remote) {
-  const local = loadLocal();
-  let chosen;
-  if (remote && local) chosen = stamp(remote.updatedAt) >= stamp(local.updatedAt) ? remote : local;
-  else                 chosen = remote || local || buildDefaultSplit();
-
-  chosen = normalize(chosen);
+// Seeded at startup from the durable local repository (or the legacy
+// localStorage mirror when IndexedDB is unavailable). The cloud is reconciled
+// in the background by js/data/reconcile.js — never from here.
+export function initSplit(localDocument) {
+  const chosen = normalize(localDocument || loadLocal() || buildDefaultSplit());
   if (!chosen.updatedAt) chosen.updatedAt = new Date().toISOString(); // stamp a fresh seed
   state.split = chosen;
   saveLocal(chosen);
-
-  // Push up if the cloud has nothing, or our chosen copy is newer (e.g. the
-  // initial seed, or offline edits made on a previous run). Best effort.
-  if (!remote || stamp(chosen.updatedAt) > stamp(remote.updatedAt)) {
-    dbSaveSplitConfig(chosen).catch(() => {});
-  }
 }
 
-// Persist after any edit: stamp, write local now, push cloud best-effort.
+/** Replace the in-memory copy with one the reconciler adopted from the cloud. */
+export function adoptSplit(data) {
+  state.split = normalize(data);
+  saveLocal(state.split);
+}
+
+// Persist after any edit: stamp, mirror to the legacy key, then write durably
+// to IndexedDB and queue the cloud write in the same transaction.
 export function saveSplit() {
   const split = state.split;
   split.updatedAt = new Date().toISOString();
   saveLocal(split);
-  dbSaveSplitConfig(split).then(({ error }) => {
-    if (error && _cloudOk) { _cloudOk = false; showToast('Saved on this device · cloud sync unavailable', 'warning'); }
-    else if (!error && !_cloudOk) { _cloudOk = true; showToast('Split synced', 'success'); }
+  return persistDocument('split', split).then(result => {
+    reportSaveResult('Training split', result);
+    return result;
   });
 }
+
+export { normalize as normalizeSplitDocument };
 
 export function getSplit() { return state.split; }
 export function getMuscles() { return state.split.muscles; }

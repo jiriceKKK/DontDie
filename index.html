@@ -27,10 +27,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
   <!-- Self-healing bootstrap + service-worker registration. External and
        same-origin so the page carries no inline script. -->
-  <script src="js/boot.js?v=21"></script>
+  <script src="js/boot.js?v=22"></script>
 </head>
 <body>
 
@@ -109,13 +109,11 @@
       Offline — changes will sync when reconnected
     </div>
 
-    <!-- App header: mode switcher (always visible) + desktop tab nav (generated per mode) -->
+    <!-- App header: desktop tab nav (generated per mode) plus the sync chip.
+         The old #mode-switcher pill was removed in Phase 2 — it duplicated the
+         translucent #mode-fab above the bottom dock, which is now the single
+         mode picker and Home shortcut. -->
     <header class="app-header">
-      <button class="mode-switcher" id="mode-switcher" aria-label="Switch mode">
-        <span class="mode-switcher-dot"></span>
-        <span class="mode-switcher-label" id="mode-switcher-label">Physical Health</span>
-        <svg class="mode-switcher-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </button>
       <nav class="nav-top" id="nav-top"></nav>
     </header>
 
@@ -146,8 +144,8 @@
   <!-- Supabase sets window.supabase — must remain a classic script, not a module.
        Vendored at an exact version from our own origin (see vendor/README.md)
        so script-src can stay 'self'. -->
-  <script src="vendor/supabase-js-2.112.4.umd.js?v=21"></script>
+  <script src="vendor/supabase-js-2.112.4.umd.js?v=22"></script>
   <!-- ES-module entry point — imports everything else under js/ -->
-  <script type="module" src="js/main.js?v=21"></script>
+  <script type="module" src="js/main.js?v=22"></script>
 </body>
 </html>

@@ -2,12 +2,22 @@ import { state } from '../state.js';
 import { BUILT_IN_HABITS, CATEGORY_COLORS, CATEGORY_LABELS, PRESET_COLORS } from '../constants.js';
 import { formatDate, today } from '../utils/date.js';
 import {
-  dbCreateCustomHabit, dbUpdateCustomHabit, dbDeleteCustomHabit,
-  dbDeleteAllLogs,
-} from '../db.js';
+  persistCustomHabitCreate, persistCustomHabitUpdate, persistCustomHabitDelete,
+  persistClearAllLogs,
+} from '../data/repository.js';
 import { showToast } from '../ui/toast.js';
 import { openModal, closeModal } from '../ui/modal.js';
 import { safeColor } from '../ui/dom.js';
+import { isPersisted } from '../ui/saveFeedback.js';
+
+/** Client-generated habit id — also the idempotency key for its create. */
+function newHabitId() {
+  try {
+    if (globalThis.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch { /* fall through */ }
+  const hex = () => Math.floor(Math.random() * 16).toString(16);
+  return 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, hex);
+}
 import { switchTab } from '../navigation.js';
 import { renderTodayHabits, renderToday } from './today.js';
 import { scheduleOf, findEffectiveHabit } from '../habits.js';
@@ -157,7 +167,12 @@ export function renderSettings() {
       const habit = state.customHabits.find(h => h.id === id);
       if (!habit) return;
       habit.active = input.checked;
-      await dbUpdateCustomHabit(id, { active: habit.active });
+      const result = await persistCustomHabitUpdate(id, { active: habit.active });
+      if (!isPersisted(result)) {
+        habit.active = !input.checked;
+        input.checked = habit.active;
+        showToast('This device could not save that change', 'error');
+      }
     });
   });
 
@@ -165,8 +180,10 @@ export function renderSettings() {
   panel.querySelectorAll('[data-delete-custom]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.deleteCustom;
-      const { error } = await dbDeleteCustomHabit(id);
-      if (error) { showToast('Delete failed', 'error'); return; }
+      // A local tombstone, so a cloud hydrate that raced the delete cannot
+      // bring the habit back before the remote delete lands.
+      const result = await persistCustomHabitDelete(id);
+      if (!isPersisted(result)) { showToast('Delete failed on this device', 'error'); return; }
       state.customHabits = state.customHabits.filter(h => h.id !== id);
       showToast('Habit deleted', 'default');
       renderSettings();
@@ -211,8 +228,8 @@ export function renderSettings() {
     document.getElementById('cancel-clear').addEventListener('click', closeModal);
     document.getElementById('confirm-clear').addEventListener('click', async () => {
       closeModal();
-      const { error } = await dbDeleteAllLogs();
-      if (error) { showToast('Failed to clear data', 'error'); return; }
+      const result = await persistClearAllLogs();
+      if (!isPersisted(result)) { showToast('Failed to clear data', 'error'); return; }
       state.logsByDate = {};
       showToast('All data cleared', 'default');
       renderToday(today());
@@ -407,10 +424,17 @@ function openHabitEditor({ mode, kind, id } = {}) {
     };
 
     if (mode === 'create') {
-      const { data, error } = await dbCreateCustomHabit({ name, days, color: w.color, sort_order: state.customHabits.length });
-      if (error || !data) { showToast('Failed to save habit (offline?)', 'error'); return; }
-      state.customHabits.push(data);
-      setCustomMeta(data.id, { tags, schedule, category: w.category, stimLink });
+      // The id is generated here so the create is idempotent: a retry after an
+      // unacknowledged success upserts the same row instead of a duplicate.
+      const row = {
+        id: newHabitId(),
+        name, days, color: w.color, active: true,
+        sort_order: state.customHabits.length,
+      };
+      const result = await persistCustomHabitCreate(row);
+      if (!isPersisted(result)) { showToast('This device could not save that habit', 'error'); return; }
+      state.customHabits.push(row);
+      setCustomMeta(row.id, { tags, schedule, category: w.category, stimLink });
       showToast('Habit added', 'success');
       closeModal(); renderSettings(); switchTab('today');
     } else if (isBuiltin) {
@@ -420,7 +444,7 @@ function openHabitEditor({ mode, kind, id } = {}) {
     } else {
       const habit = state.customHabits.find(h => h.id === id);
       if (habit) { habit.name = name; habit.days = days; habit.color = w.color; }
-      await dbUpdateCustomHabit(id, { name, days, color: w.color });
+      await persistCustomHabitUpdate(id, { name, days, color: w.color });
       setCustomMeta(id, { tags, schedule, category: w.category, stimLink });
       showToast('Habit updated', 'success');
       closeModal(); renderSettings(); renderTodayHabits(today());

@@ -129,10 +129,65 @@ against any URL that looks like a hosted project.
 5. Sign in to the app as the owner and confirm data loads normally.
 6. Delete the disposable second account.
 
-### 3.4 Rolling back
+### 3.4 Migration 002 — revision support
 
-There is no down-migration: reversing it would restore anonymous access to
-personal data. If something is wrong, restore the backup from 3.1.
+`supabase/migrations/002_revision_and_archive_support.sql` adds a
+server-maintained `revision` and `updated_at` to each installed JSON document
+table, so the client can write with compare-and-set:
+
+```sql
+UPDATE split_config SET data = $new
+ WHERE user_id = auth.uid() AND id = 1 AND revision = $expected
+RETURNING revision;
+```
+
+Zero rows back means the cloud moved on. `js/data/reconcile.js` then fetches the
+remote copy and keeps BOTH versions as a recoverable conflict; it never
+overwrites either side.
+
+It differs from 001 in three ways that make it much lower risk:
+
+- it takes **no owner UUID** — it adds no rows and re-keys nothing;
+- it is **idempotent** — `ADD COLUMN IF NOT EXISTS` plus `DROP TRIGGER IF EXISTS`,
+  so a rerun converges instead of failing;
+- it is **backward compatible** — the trigger discards whatever `revision` and
+  `updated_at` a client sends, so a client that predates it keeps working
+  unchanged. This was verified in the staging rehearsal by replaying the old
+  client's plain `upsert` and confirming the server still stamped both columns.
+
+Procedure:
+
+1. Rehearse: `npm run db:verify` applies 001 then 002 and runs both verification
+   files against a disposable Postgres.
+2. Take a fresh backup checkpoint (3.1) — a new one, not the 001 backup.
+3. Apply over SSL with `ON_ERROR_STOP`:
+
+   ```sh
+   psql "$DATABASE_URL?sslmode=require" -v ON_ERROR_STOP=1 \
+     -f supabase/migrations/002_revision_and_archive_support.sql
+   ```
+
+4. Run `supabase/verify/002_revision_and_archive_support.sql` with both
+   placeholders filled in. Section A is read-only; B–E roll themselves back and
+   touch only the disposable second account's own row.
+5. Re-run the 001 verification to confirm the authorization boundary is intact.
+6. Confirm row counts are unchanged: this migration adds columns, never rows.
+
+Archive/tombstone semantics for activities, tests and custom habits are
+deliberately NOT here. Phase 2 keeps tombstones on the device
+(`js/data/habitRepository.js`); Phase 3 specifies the archive model and its
+read-path rules. Adding a half-defined `deleted_at` now would change what the
+deployed client sees before anything filters on it.
+
+### 3.5 Rolling back
+
+There is no down-migration for 001: reversing it would restore anonymous access
+to personal data. If something is wrong, restore the backup from 3.1.
+
+Migration 002 is reversible in principle (drop the triggers, drop the columns)
+but doing so would strip the compare-and-set guard while clients still rely on
+it, turning every concurrent edit back into a silent last-write-wins overwrite.
+Restore the backup instead.
 
 ---
 
@@ -193,9 +248,14 @@ data; adding one would add weight without adding protection.
 
 ---
 
-## 5. The phase notifier
+## 5. The notifiers
 
-`scripts/notify-phase.mjs` is Node-only tooling. It:
+There are two, and the split is deliberate: one may only ever announce success,
+so it can never be used to paper over an unfinished phase.
+
+### 5.1 Phase completion — `scripts/notify-phase.mjs`
+
+Node-only tooling. It:
 
 - reads `DONTDIE_DISCORD_WEBHOOK_URL` **only** from `process.env`;
 - refuses non-HTTPS URLs, non-Discord hosts, and malformed webhook paths;
@@ -214,9 +274,33 @@ node scripts/notify-phase.mjs --phase 1 --name '…' --summary '…' \
 
 Add `--dry-run` to print the exact message without contacting anything.
 
-It must never be imported from `js/`, referenced in `index.html`, or cached by
-`sw.js` (which explicitly refuses to cache `/scripts/`, `/supabase/`, `/tests/`
-and `/docs/`). A unit test enforces all of this.
+### 5.2 Work status — `scripts/notify-status.mjs`
+
+The counterpart, for the truthful non-completion states: `working`, `paused`,
+`blocked`. It carries the same environment-only URL handling, host allow-list,
+redirect refusal, timeout and content guard, and adds two rules of its own:
+
+- it **refuses a body that uses completion wording** ("phase complete",
+  "completed successfully", "success: true"), so an unfinished phase cannot be
+  reported as a finished one even by accident;
+- it requires task, work performed, checks, current state and next required
+  action, so a status message is actually actionable.
+
+```sh
+node scripts/notify-status.mjs --state blocked \
+  --task '…' --work '…' --checks '…' --next '…'
+```
+
+`--dry-run` prints the exact message without contacting anything.
+
+### 5.3 Neither may be reachable from the browser
+
+Neither script may be imported from `js/`, referenced in `index.html`, or cached
+by `sw.js` (which explicitly refuses to cache `/scripts/`, `/supabase/`,
+`/tests/` and `/docs/`). This is enforced twice: a unit test walks every
+browser-delivered file, and `scripts/secret-scan.mjs` fails the build if any
+file under `js/`, `tests/e2e/`, `vendor/`, `index.html` or `sw.js` so much as
+names a notifier or the webhook environment variable.
 
 ---
 

@@ -25,9 +25,13 @@ export const state = {
   hiddenBuiltins: new Set(),
   habitConfig: null,   // built-in overrides + custom meta (loaded by js/habitConfig.js)
   logsByDate: {},      // { "2024-05-20": { "gym_push_a": true, ... } }
-  pendingQueue: [],    // offline queue
   isOnline: true,
-  retryInterval: null,
   initialized: false,
   connectionOk: false,
 };
+
+// NOTE (Phase 2): this object is an in-memory READ CACHE, not the persistence
+// source of truth. Durable state lives in IndexedDB behind js/data/, and every
+// mutation goes through a module action that writes there. Nothing here
+// survives a reload on its own. The old `pendingQueue`/`retryInterval` fields
+// are gone: pending writes are durable in the outbox, not in memory.

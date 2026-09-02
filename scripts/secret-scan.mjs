@@ -55,6 +55,30 @@ for (const file of tracked()) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Structural rule: the webhook notifiers are Node-only. Nothing that ships to
+// a browser — anything under js/, index.html, the service worker, or an E2E
+// artifact — may name them or the environment variable they read, because
+// anything reachable from the page is reachable by anyone who opens the page.
+// ---------------------------------------------------------------------------
+const FRONTEND = /^(js\/|tests\/e2e\/|index\.html$|sw\.js$|vendor\/)/;
+const FORBIDDEN_IN_FRONTEND = [
+  { id: 'notifier-in-frontend', re: /notify-(?:phase|status)\.mjs|DONTDIE_DISCORD_WEBHOOK_URL/, why: 'server-only notifier reachable from browser code' },
+];
+
+for (const file of tracked()) {
+  if (SELF.has(file) || BINARY.test(file) || !FRONTEND.test(file)) continue;
+  let text;
+  try { text = readFileSync(file, 'utf8'); } catch { continue; }
+  const lines = text.split('\n');
+  for (const rule of FORBIDDEN_IN_FRONTEND) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!rule.re.test(lines[i])) continue;
+      findings.push(`${file}:${i + 1}  [${rule.id}] ${rule.why}`);
+    }
+  }
+}
+
 if (findings.length) {
   console.error(`secret-scan: ${findings.length} finding(s) across ${scanned} file(s)`);
   for (const f of findings) console.error('  x ' + f);
